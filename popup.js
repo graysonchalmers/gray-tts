@@ -14,21 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const volumeLabel = document.getElementById('volumeLabel');
 
     // Populate the voice dropdown
-    chrome.tts.getVoices(function(voices) {
-        for (let i = 0; i < voices.length; i++) {
-            let option = document.createElement('option');
-            option.text = "Web Speech API - " + voices[i].voiceName;
-            voiceSelect.add(option);
-        }
-    });
-
-    // Populate the voice dropdown with ResponsiveVoice voices
-    let rvVoices = responsiveVoice.getVoices();
-    for (let i = 0; i < rvVoices.length; i++) {
-        let option = document.createElement('option');
-        option.text = "ResponsiveVoice - " + rvVoices[i].name;
-        voiceSelect.add(option);
-    }
+    populateVoiceDropdown();
 
     // Get the current TTS settings from storage and update the controls
     chrome.storage.sync.get('ttsSettings', function(data) {
@@ -70,7 +56,7 @@ document.addEventListener('DOMContentLoaded', () => {
         let selectedOption = voiceSelect.value.split(" - ");
         let engine = selectedOption[0] === "Web Speech API" ? 'webSpeech' : 'responsiveVoice';
         let voiceName = selectedOption[1];
-        chrome.runtime.sendMessage({
+        let ttsSettings = {
             message: 'update_tts_settings',
             ttsSettings: {
                 voiceName: voiceName,
@@ -79,10 +65,72 @@ document.addEventListener('DOMContentLoaded', () => {
                 pitch: parseFloat(pitchInput.value),
                 volume: parseFloat(volumeInput.value)
             }
-        });
+        };
+        if (!previewing) {
+            chrome.runtime.sendMessage(ttsSettings);
+        }
         // Update the labels
         rateLabel.innerText = `Rate: ${rateInput.value}`;
         pitchLabel.innerText = `Pitch: ${pitchInput.value}`;
         volumeLabel.innerText = `Volume: ${volumeInput.value}`;
     }
+
+    function populateVoiceDropdown() {
+        // Clear the current options
+        voiceSelect.innerHTML = '';
+
+        // Populate the dropdown with the voices from the selected engine
+        if (engineSelect.value === 'webSpeech') {
+            chrome.tts.getVoices(function(voices) {
+                for (let i = 0; i < voices.length; i++) {
+                    let option = document.createElement('option');
+                    option.text = "Web Speech API - " + voices[i].voiceName;
+                    voiceSelect.add(option);
+                }
+            });
+        } else {
+            let rvVoices = responsiveVoice.getVoices();
+            for (let i = 0; i < rvVoices.length; i++) {
+                let option = document.createElement('option');
+                option.text = "ResponsiveVoice - " + rvVoices[i].name;
+                voiceSelect.add(option);
+            }
+        }
+    }
+
+    function previewVoice() {
+        let selectedOption = voiceSelect.value.split(" - ");
+        let engine = selectedOption[0] === "Web Speech API" ? 'webSpeech' : 'responsiveVoice';
+        let voiceName = selectedOption[1];
+        let sampleText = "This is a sample text for voice preview.";
+
+        if (engine === 'webSpeech') {
+            chrome.tts.speak(sampleText, {
+                voiceName: voiceName,
+                rate: parseFloat(rateInput.value),
+                pitch: parseFloat(pitchInput.value),
+                volume: parseFloat(volumeInput.value)
+            });
+        } else {
+            responsiveVoice.speak(sampleText, voiceName, {
+                rate: parseFloat(rateInput.value),
+                pitch: parseFloat(pitchInput.value),
+                volume: parseFloat(volumeInput.value)
+            });
+        }
+    }
+
+    // Populate the voice dropdown with ResponsiveVoice voices
+    let rvVoices = responsiveVoice.getVoices();
+    for (let i = 0; i < rvVoices.length; i++) {
+        let option = document.createElement('option');
+        option.text = "ResponsiveVoice - " + rvVoices[i].name;
+        voiceSelect.add(option);
+    }
+
+    // Add an event listener to the engine dropdown
+    engineSelect.addEventListener('change', populateVoiceDropdown);
+
+    // Add an event listener for the "Preview" button
+    document.getElementById('preview').addEventListener('click', previewVoice);
 });
