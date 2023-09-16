@@ -17,10 +17,18 @@ document.addEventListener('DOMContentLoaded', () => {
     chrome.tts.getVoices(function(voices) {
         for (let i = 0; i < voices.length; i++) {
             let option = document.createElement('option');
-            option.text = voices[i].voiceName;
+            option.text = "Web Speech API - " + voices[i].voiceName;
             voiceSelect.add(option);
         }
     });
+
+    // Populate the voice dropdown with ResponsiveVoice voices
+    let rvVoices = responsiveVoice.getVoices();
+    for (let i = 0; i < rvVoices.length; i++) {
+        let option = document.createElement('option');
+        option.text = "ResponsiveVoice - " + rvVoices[i].name;
+        voiceSelect.add(option);
+    }
 
     // Get the current TTS settings from storage and update the controls
     chrome.storage.sync.get('ttsSettings', function(data) {
@@ -59,11 +67,14 @@ document.addEventListener('DOMContentLoaded', () => {
     volumeInput.addEventListener('input', sendTTSSettings);
 
     function sendTTSSettings() {
+        let selectedOption = voiceSelect.value.split(" - ");
+        let engine = selectedOption[0] === "Web Speech API" ? 'webSpeech' : 'responsiveVoice';
+        let voiceName = selectedOption[1];
         chrome.runtime.sendMessage({
             message: 'update_tts_settings',
             ttsSettings: {
-                voiceName: voiceSelect.value,
-                engine: engineSelect.value,
+                voiceName: voiceName,
+                engine: engine,
                 rate: parseFloat(rateInput.value),
                 pitch: parseFloat(pitchInput.value),
                 volume: parseFloat(volumeInput.value)
