@@ -67,7 +67,11 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         };
         if (!previewing) {
-            chrome.runtime.sendMessage(ttsSettings);
+            chrome.runtime.sendMessage(ttsSettings, function(response) {
+                if (chrome.runtime.lastError) {
+                    console.error(chrome.runtime.lastError.message);
+                }
+            });
         }
         // Update the labels
         rateLabel.innerText = `Rate: ${rateInput.value}`;

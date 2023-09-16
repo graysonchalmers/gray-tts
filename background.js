@@ -40,6 +40,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 console.error(chrome.runtime.lastError.message);
             }
         });
+        // Apply the new TTS settings
+        if (ttsSettings.engine === 'responsiveVoice') {
+            responsiveVoice.setDefaultVoice(ttsSettings.voiceName);
+        } else {
+            chrome.tts.setDefaultVoice(ttsSettings.voiceName, function() {
+                if (chrome.runtime.lastError) {
+                    console.error(chrome.runtime.lastError.message);
+                }
+            });
+        }
     } else if (request.message === 'pause') {
         chrome.tts.pause();
     } else if (request.selection) {
