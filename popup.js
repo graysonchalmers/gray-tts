@@ -1,10 +1,16 @@
 document.addEventListener('DOMContentLoaded', () => {
     const toggleButton = document.getElementById('toggle');
+    const pauseButton = document.getElementById('pause');
     const statusText = document.getElementById('status');
     const voiceSelect = document.getElementById('voice');
     const rateInput = document.getElementById('rate');
     const pitchInput = document.getElementById('pitch');
     const volumeInput = document.getElementById('volume');
+
+    // Labels for the sliders
+    const rateLabel = document.getElementById('rateLabel');
+    const pitchLabel = document.getElementById('pitchLabel');
+    const volumeLabel = document.getElementById('volumeLabel');
 
     // Populate the voice dropdown
     chrome.tts.getVoices(function(voices) {
@@ -22,6 +28,10 @@ document.addEventListener('DOMContentLoaded', () => {
             rateInput.value = data.ttsSettings.rate;
             pitchInput.value = data.ttsSettings.pitch;
             volumeInput.value = data.ttsSettings.volume;
+            // Update the labels
+            rateLabel.innerText = `Rate: ${data.ttsSettings.rate}`;
+            pitchLabel.innerText = `Pitch: ${data.ttsSettings.pitch}`;
+            volumeLabel.innerText = `Volume: ${data.ttsSettings.volume}`;
         }
     });
 
@@ -33,6 +43,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 statusText.innerText = "Status: Disabled";
             }
         });
+    });
+
+    pauseButton.addEventListener('click', () => {
+        chrome.runtime.sendMessage({message: 'pause'});
     });
 
     // Send the TTS settings to the background script whenever they're changed
@@ -51,5 +65,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 volume: parseFloat(volumeInput.value)
             }
         });
+        // Update the labels
+        rateLabel.innerText = `Rate: ${rateInput.value}`;
+        pitchLabel.innerText = `Pitch: ${pitchInput.value}`;
+        volumeLabel.innerText = `Volume: ${volumeInput.value}`;
     }
 });

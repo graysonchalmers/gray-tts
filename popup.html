@@ -1,21 +1,25 @@
 <!DOCTYPE html>
 <html>
+<head>
+<link rel="stylesheet" type="text/css" href="styles.css">
+</head>
 <body>
 
 <p>Voice:</p>
 <select id="voice"></select>
 
-<p>Rate:</p>
+<p id="rateLabel">Rate:</p>
 <input type="range" id="rate" min="0.1" max="10" step="0.1" value="1">
 
-<p>Pitch:</p>
+<p id="pitchLabel">Pitch:</p>
 <input type="range" id="pitch" min="0" max="2" step="0.1" value="1">
 
-<p>Volume:</p>
+<p id="volumeLabel">Volume:</p>
 <input type="range" id="volume" min="0" max="1" step="0.1" value="1">
 
 <hr/>
 <button id="toggle">Enable/Disable</button>
+<button id="pause">Pause</button>
 <p id="status">Status: Enabled</p>
 <p>Hotkey: Ctrl+Shift+Y</p>
 

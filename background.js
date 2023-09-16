@@ -18,7 +18,12 @@ chrome.contextMenus.onClicked.addListener((info) => {
             options.voiceName = options.voice;
             delete options.voice;
         }
-        chrome.tts.speak(info.selectionText, options);
+        // Add error handling
+        chrome.tts.speak(info.selectionText, options, function() {
+            if (chrome.runtime.lastError) {
+                console.error(chrome.runtime.lastError.message);
+            }
+        });
     }
 });
 
@@ -29,14 +34,26 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     } else if (request.message === 'update_tts_settings') {
         // Save the new TTS settings to storage
         ttsSettings = request.ttsSettings;
-        chrome.storage.sync.set({ttsSettings: ttsSettings});
+        // Add error handling
+        chrome.storage.sync.set({ttsSettings: ttsSettings}, function() {
+            if (chrome.runtime.lastError) {
+                console.error(chrome.runtime.lastError.message);
+            }
+        });
+    } else if (request.message === 'pause') {
+        chrome.tts.pause();
     } else if (request.selection) {
         let options = {...ttsSettings};
         if (options.voice) {
             options.voiceName = options.voice;
             delete options.voice;
         }
-        chrome.tts.speak(request.selection, options);
+        // Add error handling
+        chrome.tts.speak(request.selection, options, function() {
+            if (chrome.runtime.lastError) {
+                console.error(chrome.runtime.lastError.message);
+            }
+        });
     }
 });
 
@@ -58,7 +75,12 @@ chrome.commands.onCommand.addListener(function(command) {
                     options.voiceName = options.voice;
                     delete options.voice;
                 }
-                chrome.tts.speak(response.selection, options);
+                // Add error handling
+                chrome.tts.speak(response.selection, options, function() {
+                    if (chrome.runtime.lastError) {
+                        console.error(chrome.runtime.lastError.message);
+                    }
+                });
             });
         });
     }
