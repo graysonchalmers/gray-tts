@@ -3,6 +3,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const pauseButton = document.getElementById('pause');
     const statusText = document.getElementById('status');
     const voiceSelect = document.getElementById('voice');
+    const engineSelect = document.getElementById('engine');
     const rateInput = document.getElementById('rate');
     const pitchInput = document.getElementById('pitch');
     const volumeInput = document.getElementById('volume');
@@ -25,6 +26,7 @@ document.addEventListener('DOMContentLoaded', () => {
     chrome.storage.sync.get('ttsSettings', function(data) {
         if (data.ttsSettings) {
             voiceSelect.value = data.ttsSettings.voiceName;
+            engineSelect.value = data.ttsSettings.engine || 'webSpeech';
             rateInput.value = data.ttsSettings.rate;
             pitchInput.value = data.ttsSettings.pitch;
             volumeInput.value = data.ttsSettings.volume;
@@ -51,6 +53,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Send the TTS settings to the background script whenever they're changed
     voiceSelect.addEventListener('change', sendTTSSettings);
+    engineSelect.addEventListener('change', sendTTSSettings);
     rateInput.addEventListener('input', sendTTSSettings);
     pitchInput.addEventListener('input', sendTTSSettings);
     volumeInput.addEventListener('input', sendTTSSettings);
@@ -60,6 +63,7 @@ document.addEventListener('DOMContentLoaded', () => {
             message: 'update_tts_settings',
             ttsSettings: {
                 voiceName: voiceSelect.value,
+                engine: engineSelect.value,
                 rate: parseFloat(rateInput.value),
                 pitch: parseFloat(pitchInput.value),
                 volume: parseFloat(volumeInput.value)

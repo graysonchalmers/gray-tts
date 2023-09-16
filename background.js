@@ -49,11 +49,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             delete options.voice;
         }
         // Add error handling
-        chrome.tts.speak(request.selection, options, function() {
-            if (chrome.runtime.lastError) {
-                console.error(chrome.runtime.lastError.message);
-            }
-        });
+        if (ttsSettings.engine === 'responsiveVoice') {
+            responsiveVoice.speak(request.selection, ttsSettings.voiceName, options);
+        } else {
+            chrome.tts.speak(request.selection, options, function() {
+                if (chrome.runtime.lastError) {
+                    console.error(chrome.runtime.lastError.message);
+                }
+            });
+        }
     }
 });
 
@@ -76,11 +80,15 @@ chrome.commands.onCommand.addListener(function(command) {
                     delete options.voice;
                 }
                 // Add error handling
-                chrome.tts.speak(response.selection, options, function() {
-                    if (chrome.runtime.lastError) {
-                        console.error(chrome.runtime.lastError.message);
-                    }
-                });
+                if (ttsSettings.engine === 'responsiveVoice') {
+                    responsiveVoice.speak(response.selection, ttsSettings.voiceName, options);
+                } else {
+                    chrome.tts.speak(response.selection, options, function() {
+                        if (chrome.runtime.lastError) {
+                            console.error(chrome.runtime.lastError.message);
+                        }
+                    });
+                }
             });
         });
     }
