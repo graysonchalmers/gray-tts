@@ -36,5 +36,11 @@
       },
       "description": "Read selected text with GrayTTS"
     }
-  }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["responsivevoice.js"],
+      "matches": ["<all_urls>"]
+    }
+  ]
 }
