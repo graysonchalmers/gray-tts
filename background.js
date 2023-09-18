@@ -19,11 +19,7 @@ chrome.contextMenus.onClicked.addListener((info) => {
             delete options.voice;
         }
         // Add error handling
-        chrome.tts.speak(info.selectionText, options, function() {
-            if (chrome.runtime.lastError) {
-                console.error(chrome.runtime.lastError.message);
-            }
-        });
+        responsiveVoice.speak(info.selectionText, ttsSettings.voiceName, options);
     }
 });
 
@@ -41,15 +37,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             }
         });
         // Apply the new TTS settings
-        if (ttsSettings.engine === 'responsiveVoice') {
-            responsiveVoice.setDefaultVoice(ttsSettings.voiceName);
-        } else {
-            chrome.tts.setDefaultVoice(ttsSettings.voiceName, function() {
-                if (chrome.runtime.lastError) {
-                    console.error(chrome.runtime.lastError.message);
-                }
-            });
-        }
+        responsiveVoice.setDefaultVoice(ttsSettings.voiceName);
     } else if (request.message === 'pause') {
         chrome.tts.pause();
     } else if (request.selection) {
@@ -59,15 +47,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             delete options.voice;
         }
         // Add error handling
-        if (ttsSettings.engine === 'responsiveVoice') {
-            responsiveVoice.speak(request.selection, ttsSettings.voiceName, options);
-        } else {
-            chrome.tts.speak(request.selection, options, function() {
-                if (chrome.runtime.lastError) {
-                    console.error(chrome.runtime.lastError.message);
-                }
-            });
-        }
+        responsiveVoice.speak(request.selection, ttsSettings.voiceName, options);
     }
 });
 
@@ -90,15 +70,7 @@ chrome.commands.onCommand.addListener(function(command) {
                     delete options.voice;
                 }
                 // Add error handling
-                if (ttsSettings.engine === 'responsiveVoice') {
-                    responsiveVoice.speak(response.selection, ttsSettings.voiceName, options);
-                } else {
-                    chrome.tts.speak(response.selection, options, function() {
-                        if (chrome.runtime.lastError) {
-                            console.error(chrome.runtime.lastError.message);
-                        }
-                    });
-                }
+                responsiveVoice.speak(response.selection, ttsSettings.voiceName, options);
             });
         });
     }
