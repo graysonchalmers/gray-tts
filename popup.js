@@ -9,6 +9,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const toggleButton = document.getElementById('toggle');
     const pauseButton = document.getElementById('pause');
+    const resumeButton = document.getElementById('resume');
+    const stopButton = document.getElementById('stop');
     const statusText = document.getElementById('status');
     const langFilterSelect = document.getElementById('langFilter');
     const voiceSelect = document.getElementById('voice');
@@ -34,11 +36,19 @@ document.addEventListener('DOMContentLoaded', () => {
         populateLangFilter();
 
         chrome.storage.sync.get('ttsSettings', function(data) {
-            const settings = migrateSettings(data.ttsSettings || {});
+            const rawSettings = data.ttsSettings || {};
+            const wasLegacyShape = !rawSettings.perLang;
+            const settings = migrateSettings(rawSettings);
             perLang = settings.perLang;
             langFilterSelect.value = settings.lang || '';
             populateVoiceDropdown(langFilterSelect.value);
             applyBucketToControls(getBucket(langFilterSelect.value));
+            // Persist the migrated shape immediately so background.js (which handles
+            // right-click/hotkey speech and may run before the popup is ever reopened)
+            // isn't left reading the old flat shape as an empty perLang bucket.
+            if (wasLegacyShape) {
+                chrome.storage.sync.set({ttsSettings: settings});
+            }
         });
     });
 
@@ -54,6 +64,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     pauseButton.addEventListener('click', () => {
         chrome.runtime.sendMessage({message: 'pause'});
+    });
+
+    resumeButton.addEventListener('click', () => {
+        chrome.runtime.sendMessage({message: 'resume'});
+    });
+
+    stopButton.addEventListener('click', () => {
+        chrome.runtime.sendMessage({message: 'stop'});
     });
 
     langFilterSelect.addEventListener('change', () => {
@@ -79,7 +97,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (settings.rate !== undefined) legacyBucket.rate = settings.rate;
         if (settings.pitch !== undefined) legacyBucket.pitch = settings.pitch;
         if (settings.volume !== undefined) legacyBucket.volume = settings.volume;
-        return {lang: settings.lang || '', perLang: {'': legacyBucket}};
+        const lang = settings.lang || '';
+        return {lang, perLang: {[lang]: legacyBucket}};
     }
 
     function getBucket(lang) {

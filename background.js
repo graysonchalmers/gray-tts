@@ -31,6 +31,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         });
     } else if (request.message === 'pause') {
         chrome.tts.pause();
+    } else if (request.message === 'resume') {
+        chrome.tts.resume();
+    } else if (request.message === 'stop') {
+        chrome.tts.stop();
+        clearBadge();
     } else if (request.selection) {
         speak(request.selection);
     }
@@ -49,13 +54,19 @@ function speak(text) {
     if (!text) return;
     chrome.storage.sync.get('ttsSettings', function(data) {
         const settings = (data && data.ttsSettings) || ttsSettings || {};
-        const bucket = (settings.perLang && settings.perLang[settings.lang || '']) || {};
+        const bucket = getSpeakBucket(settings);
         chrome.tts.speak(text, {
             voiceName: bucket.voiceName,
             rate: bucket.rate,
             pitch: bucket.pitch,
             volume: bucket.volume,
             onEvent: function(event) {
+                // TEMP DIAGNOSTIC (remove once answered): backlog item #3 (read-along
+                // highlighting) needs 'word' events with charIndex, which not every
+                // OS/engine voice fires. Read a paragraph aloud, then check this service
+                // worker's console (chrome://extensions -> GrayTTS -> "service worker")
+                // for which event types actually show up before building that feature.
+                console.log('[GrayTTS diag] tts event:', event.type, 'charIndex:', event.charIndex);
                 if (event.type === 'error') {
                     console.error('chrome.tts error:', event.errorMessage);
                     showErrorBadge(event.errorMessage);
@@ -65,6 +76,22 @@ function speak(text) {
             }
         });
     });
+}
+
+// Reads whichever settings shape happens to be in storage. Handles the case where the
+// popup's per-language migration hasn't run yet (e.g. right-click/hotkey used right after
+// an update, before the popup was ever reopened) by falling back to the old flat fields
+// instead of silently reading an empty bucket and losing the saved voice.
+function getSpeakBucket(settings) {
+    if (settings.perLang) {
+        return settings.perLang[settings.lang || ''] || {};
+    }
+    return {
+        voiceName: settings.voiceName,
+        rate: settings.rate,
+        pitch: settings.pitch,
+        volume: settings.volume
+    };
 }
 
 // A silently-failed speak() is exactly the failure mode this extension has fought

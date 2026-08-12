@@ -2,7 +2,7 @@
 Simple Chrome TTS extension
 
 ## Version
-1.5 (2026-08-12 03:15)
+1.6 (2026-08-12 04:10)
 
 Chrome's manifest `version` field only accepts dot-separated integers, so it can't hold a
 timestamp. The human-readable build stamp lives in `manifest.json`'s `version_name` field
@@ -11,6 +11,18 @@ the manifest so it can never go stale on its own. Bump both together on every me
 change: `version` gets a normal bump, `version_name` becomes `"<version> (<local date> <local time>)"`.
 
 ## Change Notes
+- 2026-08-12: Added **Resume** and **Stop** buttons next to Pause (`chrome.tts.resume()` /
+  `chrome.tts.stop()`). Previously there was no way to resume a paused read or forcibly stop
+  one from the popup.
+- 2026-08-12: Fixed a bug in the per-language migration added earlier the same session: the
+  legacy flat settings shape was migrated into a bucket keyed `''` (All languages) regardless
+  of which language filter was actually active, so anyone with a language filter set lost their
+  saved voice/rate/pitch/volume on first load after the update. Also: the migrated shape is now
+  persisted back to storage immediately (previously only happened once a control was touched),
+  and `background.js` now falls back to reading the legacy flat fields directly if the popup
+  hasn't migrated storage yet — closing a window where right-click/hotkey speech would silently
+  fall back to the system default voice. Caught by a second pair of eyes before it reached
+  Grayson; regression-tested with a standalone Node script (not committed — throwaway).
 - 2026-08-12: Voice/rate/pitch/volume are now remembered **per language** (keyed by the
   Language filter), instead of one global set. Switching the filter now recalls what you last
   used for that language instead of carrying over whatever was picked for the previous one.

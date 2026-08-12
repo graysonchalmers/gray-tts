@@ -1,6 +1,6 @@
 # 🧭 Session Handoff — Tool-GrayTTS (GrayTTS)
 
-_Last updated: 2026-08-12 03:15 CT_
+_Last updated: 2026-08-12 04:10 CT_
 
 ## 🧭 North Star
 _Proposed 2026-08-12, not yet explicitly confirmed by Grayson — treat as the working filter for
@@ -11,50 +11,73 @@ now the visible-failure badge) has been in service of "never silently fail" with
 naming it explicitly until this session.
 
 ## 🎯 Current state
-GrayTTS speaks natively via `chrome.tts`. Popup got a full visual pass (grouped sections,
-styled controls, status badge — commit `80d516f`) and then two backlog items were built:
-1. **Per-language voice memory** — voice/rate/pitch/volume are now stored per language
-   (`ttsSettings.perLang[lang]`) instead of one global bucket, keyed off the Language filter
-   dropdown. Switching the filter recalls what you last used for that language. Old
-   single-bucket settings auto-migrate into the `''` ("All languages") bucket on first load.
-2. **Visible failure state** — a `chrome.tts.speak()` error now sets a red badge + tooltip on
-   the toolbar icon (auto-clears after ~8s or on the next successful speak), and the popup's
-   Preview button shows an inline red error message under itself on failure.
+GrayTTS speaks natively via `chrome.tts`. Popup got a full visual pass (commit `80d516f`), then
+three backlog items were built:
+1. **Per-language voice memory** — voice/rate/pitch/volume stored per language
+   (`ttsSettings.perLang[lang]`), keyed off the Language filter dropdown. Switching the filter
+   recalls what you last used for that language. Old single-bucket settings auto-migrate on
+   first load.
+2. **Visible failure state** — a `chrome.tts.speak()` error sets a red badge + tooltip on the
+   toolbar icon, and the popup's Preview button shows an inline red error on failure.
+2b. **Migration bug fix** (found by advisor review before Grayson ever saw it) — the legacy
+   settings shape was migrating into the wrong bucket key (always `''` instead of whatever
+   language filter was active), which meant anyone with a language filter already set would
+   have silently lost their saved voice on first load. Also fixed: migration wasn't being
+   persisted immediately, and `background.js` had no fallback for reading the still-legacy
+   shape, so right-click/hotkey speech could fall back to the system default voice before the
+   popup was ever reopened. Regression-tested with a standalone Node script covering the exact
+   repro case (see `README.md` change notes) — not committed, was throwaway.
+4. **Stop / Resume controls** — added `Resume` (`chrome.tts.resume()`) and `Stop`
+   (`chrome.tts.stop()`) buttons next to the existing `Pause`. Popup is ephemeral (no state to
+   sync across opens), so these are separate one-shot buttons rather than a stateful toggle —
+   deliberately avoids the fragility a Pause/Resume toggle would need.
 
-Current version: 1.5 (2026-08-12 03:15). Both changes are code-complete and pass `node --check`
-plus a structural render check in the Browser pane preview server, but **not yet manually
-verified in Edge** (needs an actual failed-voice scenario and a real language switch to
-confirm end-to-end).
+Also added a **temporary diagnostic** in `background.js`'s `onEvent` handler
+(`console.log('[GrayTTS diag] ...')`) to answer the open question blocking item #3 below: does
+this Windows/Edge TTS setup actually fire `'word'` events with `charIndex`? Needs Grayson to
+read a paragraph aloud once and check the service worker console, then this line should be
+removed either way.
+
+Current version: 1.6 (2026-08-12 04:10). Everything above is code-complete and passes
+`node --check`, and the migration fix specifically has real (Node-script) regression coverage —
+but **none of it has been manually verified in a real loaded Edge extension yet**. That's the
+single most important next step; see below.
 
 ## 📌 Where we stopped
-Just finished writing items 1 and 2 above. **Not yet committed** as of this note being written —
-commit immediately after, then this section goes stale; check `git log` for the real state.
+Just finished writing item 4 and the migration bug fix. Not yet committed as of this note being
+written — check `git log` for the real state, this section goes stale immediately.
 
 ## ▶️ Next concrete step
-**Verify in Edge first** (unpacked reload): confirm the per-language voice memory actually
-recalls the right voice when switching the Language filter back and forth, and confirm the
-error badge appears on a real failure (e.g. temporarily request a voice name that doesn't
-exist, or disable a TTS engine). Then pick the next backlog item below.
+**Verify in Edge** (unpacked reload) before building anything else — three things stacked on
+`main` this session with no real-browser confirmation yet:
+1. Per-language voice memory actually recalls the right voice switching the Language filter
+   back and forth (this is the thing that was bugged and got fixed blind — needs eyes on it).
+2. The error badge appears on a real failure (e.g. temporarily request a voice name that
+   doesn't exist).
+3. Resume actually resumes a paused read, and Stop actually stops one.
+4. Read a paragraph aloud once and check whether `'word'` events fire in the service worker
+   console (the diagnostic above) — this single data point decides whether backlog item #3 is
+   buildable at all on this setup.
 
 ## 📋 Backlog (proposed 2026-08-12, ranked)
-1. ~~Voice memory per-language~~ — **done this session**.
+1. ~~Voice memory per-language~~ — **done this session** (had a bug, since fixed — see above).
 2. ~~Visible failure state~~ — **done this session**.
-3. **Read-along highlighting** — `chrome.tts.speak` supports word-boundary (`onEvent` type
-   `'word'`) callbacks; highlighting the spoken word/sentence in the page would need a new
-   content-script message path (background → content script → highlight span) since
-   `chrome.tts` events fire in the background, not the page. Biggest lift of the five, but the
-   highest-leverage feature for actual reading use rather than just reliability polish.
-4. **Queue / stop control** — there's a Pause button but no visible Stop, and it's unconfirmed
-   whether triggering the hotkey mid-speech interrupts or queues (`chrome.tts.speak()` defaults
-   to interrupting unless `enqueue: true` is passed, so it likely already interrupts — worth
-   confirming, then decide if enqueue-by-default is actually more useful for multi-selection
-   reading).
+3. **Read-along highlighting** — blocked on the diagnostic above. `chrome.tts.speak` supports
+   word-boundary (`onEvent` type `'word'`) callbacks, but not every OS/engine voice fires them
+   with a usable `charIndex`. If they don't fire here, this item is dead on arrival and should
+   be dropped or rescoped, not built blind — the DOM-manipulation work involved (relaying
+   charIndex from background → content script → wrapping live text in a highlight span) runs on
+   every page (`content_scripts` matches `http://*/*`), which is real blast radius for a feature
+   that might not even activate.
+4. ~~Queue / stop control~~ — **done this session** (Resume + Stop buttons).
 5. **A backlog home** — this section, living in `HANDOFF.md`, is the backlog home for now.
    Fine as long as sessions keep getting wrapped up; if this doc balloons, consider promoting
    this section to its own `BACKLOG.md`.
 
 ## ❓ Open questions
 - North Star above — confirm with Grayson it's the right one-sentence filter, or replace it.
+- Does this setup's TTS voices fire `'word'` events? Blocks item #3 entirely — see diagnostic
+  above.
 - Does Grayson want the "many voices sound the same" issue investigated further (e.g. is it a
   Windows/Edge TTS engine limitation, or are duplicate voice entries actually distinct)? He
   said he's fine with it for now ("I love what we got") — treat as low-priority unless raised
@@ -86,6 +109,39 @@ exist, or disable a TTS engine). Then pick the next backlog item below.
 ---
 
 ## 🕓 Session log
+### 2026-08-12 (part 3) — Migration bug fix, Stop/Resume controls, word-event diagnostic
+- Pushed part 2's commit (`418a5b7`) to `origin/main` on request.
+- Asked to "keep going" on the backlog. Called `advisor` before starting #3/#4 given #3's size —
+  it caught a real, already-shipped bug: `migrateSettings()` in `popup.js` always keyed the
+  legacy-shape bucket as `''` regardless of the actual active language filter, so anyone with a
+  filter set would load `getBucket(lang)` against a bucket that didn't exist and silently lose
+  their saved voice/rate/pitch/volume. Also flagged that the migration wasn't persisted back to
+  storage immediately, and that `background.js` had no fallback for the still-legacy shape
+  (meaning right-click/hotkey speech could silently drop to the system default voice before the
+  popup was ever reopened post-update) — exactly the failure class this project's North Star is
+  about.
+- Fixed all three: keyed the legacy bucket by `settings.lang || ''`; persist the migrated shape
+  immediately on load; added `getSpeakBucket()` in `background.js` so it reads the legacy flat
+  fields directly when `perLang` isn't present yet instead of falling back to nothing.
+  Regression-tested the fix in isolation with a standalone Node script covering the advisor's
+  exact repro case plus three other shapes (fresh install, already-migrated, no-filter-set) —
+  all pass. Script was throwaway, not committed.
+- Built backlog item #4: added `Resume` and `Stop` buttons next to the existing `Pause` in the
+  popup, wired to new `resume`/`stop` messages in `background.js` (`chrome.tts.resume()` /
+  `chrome.tts.stop()`, the latter also clearing the error badge). Kept them as three independent
+  one-shot buttons rather than a Pause/Resume toggle, since the popup is ephemeral and has no
+  reliable way to know mid-speech state across opens — advisor confirmed this was the right call.
+  Verified button-row layout doesn't overflow at 320px width via the Browser pane preview.
+- Advisor flagged backlog item #3 (read-along highlighting) as not safe to build blind — it needs
+  `chrome.tts` `'word'` events with `charIndex`, which not all Windows/Edge SAPI voices fire, and
+  the highlighting mechanism would run as a content script on every page. Added a temporary
+  `console.log` diagnostic in `background.js`'s `onEvent` instead of writing the feature, so
+  Grayson can answer the "does this even work here" question in ~5 minutes before any DOM code
+  gets written.
+- Bumped to 1.6. **None of this session's changes (parts 2 or 3) have been manually verified in
+  a real loaded Edge extension yet** — flagged prominently above as the next step before
+  anything else gets built on top.
+
 ### 2026-08-12 (part 2) — Popup UI pass, per-language voice memory, visible failure state
 - Picked up; found the prior session's chrome.tts commit was already made and pushed (handoff
   had said "about to commit" — drift, noted and moved on).
