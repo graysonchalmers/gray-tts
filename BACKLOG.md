@@ -44,14 +44,15 @@ the thread that was already there.
    since the popup doesn't persist state across opens).
 5. ~~**A backlog home**~~ — done 2026-08-12: this file.
 
-## Not yet Edge-verified
+## Edge verification status
 
-As of commit `0770c73` (2026-08-12), items 1, 2, and 4 above are code-complete and
-pass static checks (`node --check`, and item 1's migration fix has standalone Node
-regression coverage) but have **not been manually confirmed in a real loaded Edge
-extension**. Before adding anything new to this backlog or picking up item 3, do one
-pass in Edge:
-- Per-language voice memory recalls the right voice when switching the Language filter.
-- The error badge appears on a real failure (e.g. request a voice name that doesn't exist).
-- Resume actually resumes a paused read; Stop actually stops one.
-- The word-event diagnostic above.
+As of 2026-08-12, Grayson confirmed items 1, 2, and 4 (voice memory, error badge,
+Resume/Stop) all work in a real loaded Edge extension — general "looks good" check,
+not a specific per-scenario walkthrough.
+
+**Still open:** the word-event diagnostic. To answer it: read a paragraph aloud via
+GrayTTS, then open `chrome://extensions` → GrayTTS → "service worker" → console, and
+check whether `[GrayTTS diag] tts event: word charIndex: <number>` lines show up (vs.
+only `start`/`end`/etc. with no `word` entries). That one data point decides whether
+item 3 is buildable at all — report back what you see, then the diagnostic line gets
+removed either way.

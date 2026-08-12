@@ -1,6 +1,6 @@
 # 🧭 Session Handoff — Tool-GrayTTS (GrayTTS)
 
-_Last updated: 2026-08-12 04:30 CT_
+_Last updated: 2026-08-12 04:40 CT_
 
 ## 🧭 North Star & Backlog
 Moved to [`BACKLOG.md`](BACKLOG.md) — that's now the durable home for the roadmap so it
@@ -34,31 +34,25 @@ this Windows/Edge TTS setup actually fire `'word'` events with `charIndex`? Need
 read a paragraph aloud once and check the service worker console, then this line should be
 removed either way.
 
-Current version: 1.6 (2026-08-12 04:10). Everything above is code-complete and passes
-`node --check`, and the migration fix specifically has real (Node-script) regression coverage —
-but **none of it has been manually verified in a real loaded Edge extension yet**. That's the
-single most important next step; see below.
+Current version: 1.6 (2026-08-12 04:10). Grayson confirmed 2026-08-12 that per-language voice
+memory, the error badge, and Resume/Stop all work in a real loaded Edge extension (general
+check, not a scenario-by-scenario walkthrough — good enough to trust for now).
 
 ## 📌 Where we stopped
-Just finished writing item 4 and the migration bug fix. Not yet committed as of this note being
-written — check `git log` for the real state, this section goes stale immediately.
+Everything through v1.6 is committed and pushed (`89e3784`). Only open item is the word-event
+diagnostic below — no code changes pending.
 
 ## ▶️ Next concrete step
-**Verify in Edge** (unpacked reload) before building anything else — three things stacked on
-`main` this session with no real-browser confirmation yet:
-1. Per-language voice memory actually recalls the right voice switching the Language filter
-   back and forth (this is the thing that was bugged and got fixed blind — needs eyes on it).
-2. The error badge appears on a real failure (e.g. temporarily request a voice name that
-   doesn't exist).
-3. Resume actually resumes a paused read, and Stop actually stops one.
-4. Read a paragraph aloud once and check whether `'word'` events fire in the service worker
-   console (the diagnostic above) — this single data point decides whether backlog item #3 is
-   buildable at all on this setup.
+Read a paragraph aloud via GrayTTS, then check the service worker console
+(`chrome://extensions` → GrayTTS → "service worker") for whether `[GrayTTS diag] tts event: word
+charIndex: ...` lines appear. That single data point decides whether backlog item #3
+(read-along highlighting) is buildable at all — see `BACKLOG.md` for the full context. Report
+back what shows up; the diagnostic `console.log` gets removed either way once answered.
 
 ## ❓ Open questions
 - North Star (in `BACKLOG.md`) — confirm with Grayson it's the right one-sentence filter.
 - Does this setup's TTS voices fire `'word'` events? Blocks backlog item #3 entirely — see the
-  diagnostic note in `BACKLOG.md`.
+  diagnostic note in `BACKLOG.md`. This is the only thing still blocking forward progress.
 - Does Grayson want the "many voices sound the same" issue investigated further (e.g. is it a
   Windows/Edge TTS engine limitation, or are duplicate voice entries actually distinct)? He
   said he's fine with it for now ("I love what we got") — treat as low-priority unless raised
@@ -90,6 +84,14 @@ written — check `git log` for the real state, this section goes stale immediat
 ---
 
 ## 🕓 Session log
+### 2026-08-12 (part 5) — Edge verification confirmed (partial)
+- Grayson said it's "working good" on his side. Asked specifically whether that covered the
+  word-event diagnostic (a more technical check than the others) or just the general feel —
+  it was the general feel; the diagnostic itself hasn't been checked yet.
+- Updated `HANDOFF.md` and `BACKLOG.md` to mark items 1/2/4 as Edge-confirmed and narrow the
+  remaining open item down to just the word-event check, with clear step-by-step instructions
+  for what to look for in the service worker console.
+
 ### 2026-08-12 (part 4) — Promoted the backlog to BACKLOG.md
 - Pushed part 3's commit (`0770c73`) to `origin/main` on explicit request (`/github-push`),
   without confirmation the Edge verification pass had happened yet — flagged that gap in chat
