@@ -2,7 +2,7 @@
 Simple Chrome TTS extension
 
 ## Version
-1.6 (2026-08-12 04:10)
+1.7 (2026-08-12 05:20)
 
 Chrome's manifest `version` field only accepts dot-separated integers, so it can't hold a
 timestamp. The human-readable build stamp lives in `manifest.json`'s `version_name` field
@@ -11,6 +11,18 @@ the manifest so it can never go stale on its own. Bump both together on every me
 change: `version` gets a normal bump, `version_name` becomes `"<version> (<local date> <local time>)"`.
 
 ## Change Notes
+- 2026-08-12: Added **read-along highlighting** — the word `chrome.tts` is currently speaking
+  is now highlighted live on the page for right-click/hotkey reads (not the popup's Preview,
+  which has no source page). Uses the CSS Custom Highlight API (`CSS.highlights` + `Highlight`,
+  declared via a new `content.css` in `manifest.json`'s `content_scripts`) rather than wrapping
+  spoken text in new DOM elements, so it never mutates the page's DOM tree — safe on
+  framework-heavy pages (React, etc.) that re-render and would otherwise wipe out or duplicate
+  injected wrapper spans. `background.js` relays each `chrome.tts` `'word'` event's
+  `charIndex`/`length` to the source tab; `content.js` maps those offsets onto the actual
+  selection `Range` by walking its text nodes (handles a spoken word split across inline
+  markup, e.g. `<b>`, correctly). Degrades silently (no highlight, no error) if the API isn't
+  supported. Verified against a live DOM in the Browser pane, including a word split across a
+  `<b>` boundary and an intentionally-overrun `length` value.
 - 2026-08-12: Added **Resume** and **Stop** buttons next to Pause (`chrome.tts.resume()` /
   `chrome.tts.stop()`). Previously there was no way to resume a paused read or forcibly stop
   one from the popup.

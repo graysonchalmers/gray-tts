@@ -11,9 +11,9 @@ chrome.runtime.onInstalled.addListener(() => {
     });
 });
 
-chrome.contextMenus.onClicked.addListener((info) => {
+chrome.contextMenus.onClicked.addListener((info, tab) => {
     if (extensionEnabled) {
-        speak(info.selectionText);
+        speak(info.selectionText, tab && tab.id);
     }
 });
 
@@ -50,8 +50,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 // event (e.g. a context-menu click or the hotkey), which resets the in-memory
 // `ttsSettings` variable back to {}. Reading storage here instead of trusting that cache
 // avoids losing saved settings whenever the service worker respawns.
-function speak(text) {
+// tabId, when provided, is the page whose selection is being read — used to relay
+// read-along highlighting (see content.js) back to that page as speech progresses. Preview
+// (spoken from the popup) has no source page, so it's called without a tabId and simply
+// doesn't highlight anything.
+function speak(text, tabId) {
     if (!text) return;
+    if (tabId !== undefined) {
+        // Capture the selection's Range on the content-script side right as speech starts,
+        // since that's the last moment we can be confident the selection hasn't changed.
+        chrome.tabs.sendMessage(tabId, {message: 'capture_selection_range'}, () => {
+            if (chrome.runtime.lastError) { /* no content script on this tab (e.g. a chrome:// page) — ignore */ }
+        });
+    }
     chrome.storage.sync.get('ttsSettings', function(data) {
         const settings = (data && data.ttsSettings) || ttsSettings || {};
         const bucket = getSpeakBucket(settings);
@@ -61,20 +72,29 @@ function speak(text) {
             pitch: bucket.pitch,
             volume: bucket.volume,
             onEvent: function(event) {
-                // TEMP DIAGNOSTIC (remove once answered): backlog item #3 (read-along
-                // highlighting) needs 'word' events with charIndex, which not every
-                // OS/engine voice fires. Read a paragraph aloud, then check this service
-                // worker's console (chrome://extensions -> GrayTTS -> "service worker")
-                // for which event types actually show up before building that feature.
-                console.log('[GrayTTS diag] tts event:', event.type, 'charIndex:', event.charIndex);
                 if (event.type === 'error') {
                     console.error('chrome.tts error:', event.errorMessage);
                     showErrorBadge(event.errorMessage);
+                    if (tabId !== undefined) sendClearHighlight(tabId);
                 } else if (event.type === 'start') {
                     clearBadge();
+                } else if (event.type === 'word' && tabId !== undefined) {
+                    chrome.tabs.sendMessage(tabId, {
+                        message: 'highlight_progress',
+                        charIndex: event.charIndex,
+                        length: event.length
+                    }, () => { if (chrome.runtime.lastError) { /* tab navigated away mid-speech — ignore */ } });
+                } else if ((event.type === 'end' || event.type === 'interrupted' || event.type === 'cancelled') && tabId !== undefined) {
+                    sendClearHighlight(tabId);
                 }
             }
         });
+    });
+}
+
+function sendClearHighlight(tabId) {
+    chrome.tabs.sendMessage(tabId, {message: 'clear_highlight'}, () => {
+        if (chrome.runtime.lastError) { /* tab navigated away mid-speech — ignore */ }
     });
 }
 
@@ -132,7 +152,7 @@ chrome.commands.onCommand.addListener(function(command) {
                     return;
                 }
                 if (response && response.selection) {
-                    speak(response.selection);
+                    speak(response.selection, tab.id);
                 }
             });
         });

@@ -1,0 +1,7 @@
+/* Read-along highlight for the word/segment chrome.tts is currently speaking.
+   Declared in manifest.json's content_scripts so it's exempt from page CSP, same reason
+   this project moved off ResponsiveVoice's CSP-vulnerable remote-audio approach. */
+::highlight(graytts-highlight) {
+    background-color: #ffe066;
+    color: #1a1a1a;
+}

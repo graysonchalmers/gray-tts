@@ -1,6 +1,6 @@
 # 🧭 Session Handoff — Tool-GrayTTS (GrayTTS)
 
-_Last updated: 2026-08-12 04:40 CT_
+_Last updated: 2026-08-12 05:20 CT_
 
 ## 🧭 North Star & Backlog
 Moved to [`BACKLOG.md`](BACKLOG.md) — that's now the durable home for the roadmap so it
@@ -28,31 +28,40 @@ three backlog items were built:
    sync across opens), so these are separate one-shot buttons rather than a stateful toggle —
    deliberately avoids the fragility a Pause/Resume toggle would need.
 
-Also added a **temporary diagnostic** in `background.js`'s `onEvent` handler
-(`console.log('[GrayTTS diag] ...')`) to answer the open question blocking item #3 below: does
-this Windows/Edge TTS setup actually fire `'word'` events with `charIndex`? Needs Grayson to
-read a paragraph aloud once and check the service worker console, then this line should be
-removed either way.
+Grayson confirmed on his setup the service worker console showed real `'word'` events with
+`charIndex` values, so backlog item #3 (**read-along highlighting**) got built: the currently-
+spoken word is now highlighted live on the page for right-click/hotkey reads, using the CSS
+Custom Highlight API (no DOM mutation — safe on React-heavy pages like Gemini, which is
+literally where this session's false-alarm `rvApiKey` scare happened — see below). Full
+technical detail in `README.md`'s change notes; ranking/status in `BACKLOG.md`.
 
-Current version: 1.6 (2026-08-12 04:10). Grayson confirmed 2026-08-12 that per-language voice
+Also this session: Grayson saw an `Uncaught ReferenceError: rvApiKey is not defined` error on
+`gemini.google.com` pointing at `responsivevoice.js` — alarming since that file was removed
+back in the `chrome.tts` migration. Traced it to a **false alarm**: confirmed via Edge's Secure
+Preferences that the extension loads from the correct, current `C:\Projects-local\Tool-GrayTTS`
+folder (no responsivevoice.js anywhere on it), and the actual cause was a stale DevTools
+console entry (likely "Preserve log") that survived an extension reload + tab refresh. Clearing
+the console and hard-refreshing confirmed it's gone. Not a regression, no code changed for this.
+
+Current version: 1.7 (2026-08-12 05:20). Grayson confirmed 2026-08-12 that per-language voice
 memory, the error badge, and Resume/Stop all work in a real loaded Edge extension (general
-check, not a scenario-by-scenario walkthrough — good enough to trust for now).
+check, not scenario-by-scenario). Read-along highlighting is code-complete and its offset-mapping
+logic is verified against a live DOM (including a word split across a `<b>` tag and an overrun
+length value — see README) — but **not yet tested in the real extension on a real page**.
 
 ## 📌 Where we stopped
-Everything through v1.6 is committed and pushed (`89e3784`). Only open item is the word-event
-diagnostic below — no code changes pending.
+Just finished building read-along highlighting. Not yet committed as of this note — check
+`git log` for the real state.
 
 ## ▶️ Next concrete step
-Read a paragraph aloud via GrayTTS, then check the service worker console
-(`chrome://extensions` → GrayTTS → "service worker") for whether `[GrayTTS diag] tts event: word
-charIndex: ...` lines appear. That single data point decides whether backlog item #3
-(read-along highlighting) is buildable at all — see `BACKLOG.md` for the full context. Report
-back what shows up; the diagnostic `console.log` gets removed either way once answered.
+Verify read-along highlighting in Edge: select a paragraph on a real page, right-click → "Read
+with GrayTTS" (or the hotkey), and confirm the currently-spoken word gets visually highlighted
+and the highlight clears cleanly at the end / on Stop. Worth trying on both a plain page and a
+JS-heavy one (Gemini, since that's already open) to make sure a re-rendering page doesn't break
+it — the whole point of using the CSS Highlight API instead of DOM wrapping was to survive that.
 
 ## ❓ Open questions
 - North Star (in `BACKLOG.md`) — confirm with Grayson it's the right one-sentence filter.
-- Does this setup's TTS voices fire `'word'` events? Blocks backlog item #3 entirely — see the
-  diagnostic note in `BACKLOG.md`. This is the only thing still blocking forward progress.
 - Does Grayson want the "many voices sound the same" issue investigated further (e.g. is it a
   Windows/Edge TTS engine limitation, or are duplicate voice entries actually distinct)? He
   said he's fine with it for now ("I love what we got") — treat as low-priority unless raised
@@ -84,10 +93,47 @@ back what shows up; the diagnostic `console.log` gets removed either way once an
 ---
 
 ## 🕓 Session log
+### 2026-08-12 (part 6) — Read-along highlighting, and a false-alarm rvApiKey scare
+- Grayson reported `Uncaught ReferenceError: rvApiKey is not defined` on `gemini.google.com`,
+  pointing at `extensions://<id>/responsivevoice.js` — alarming since that file was removed in
+  the `chrome.tts` migration two sessions ago. Investigated methodically rather than assuming:
+  confirmed via `git log`/filesystem that no copy of `responsivevoice.js` exists in the repo;
+  searched common local folders for stray copies (none found); then read Edge's own
+  `Secure Preferences` JSON for the extension ID in the error and confirmed it's loading from
+  exactly `C:\Projects-local\Tool-GrayTTS` — the correct, current folder. Ruled out a duplicate
+  install. Landed on the real cause: a stale DevTools console entry (consistent with "Preserve
+  log" being on) that survived an extension reload + tab refresh. Confirmed resolved after
+  clearing the console and hard-refreshing. No code changes — this was a false alarm, not a bug.
+- Confirmed word events fire on Grayson's setup (the diagnostic from part 3 — "looks good"),
+  which unblocked backlog item #3. Built **read-along highlighting**:
+  - `content.js`: captures the active selection's `Range` on demand, and maps a
+    `chrome.tts` word event's `charIndex`/`length` onto that Range by walking its text nodes —
+    handles a spoken word split across inline markup (e.g. `<b>`) correctly.
+  - Uses the **CSS Custom Highlight API** (`CSS.highlights` + `Highlight`, via a new
+    `content.css` declared in `manifest.json`'s `content_scripts`) instead of wrapping spoken
+    text in new DOM elements — chosen specifically because it never mutates the page's DOM,
+    which matters on a framework-heavy page like Gemini (the same page from the false alarm
+    above) that could otherwise wipe out or duplicate injected wrapper spans on a re-render.
+    Degrades silently if unsupported.
+  - `background.js`: `speak()` now takes an optional `tabId`, sent by both the context-menu and
+    hotkey call sites (not the popup's Preview, which has no source page). Relays `'word'`
+    events to that tab as `highlight_progress` messages, and clears the highlight on
+    `'end'`/`'interrupted'`/`'cancelled'`/`'error'`.
+  - Removed the temporary diagnostic `console.log` from `background.js` now that it's answered.
+  - **Verified the offset-mapping logic against a live DOM** in the Browser pane (not just
+    `node --check`): built a throwaway test page with a word split across a `<b>` tag, confirmed
+    `getSubRange()` correctly highlights exactly `"brown"` across that boundary, confirmed
+    ordinary words and the last word in a string, confirmed an intentionally-overrun `length`
+    value clamps to the end instead of dropping the highlight, and confirmed `clearHighlight()`
+    actually removes it. Test file was throwaway, not committed.
+  - **Not yet tested in the real loaded extension on a real page** — that's the next step.
+- Bumped to 1.7.
+
 ### 2026-08-12 (part 5) — Edge verification confirmed (partial)
 - Grayson said it's "working good" on his side. Asked specifically whether that covered the
   word-event diagnostic (a more technical check than the others) or just the general feel —
-  it was the general feel; the diagnostic itself hasn't been checked yet.
+  it was the general feel; the diagnostic itself hadn't been checked yet at that point (it was
+  confirmed working in part 6 above).
 - Updated `HANDOFF.md` and `BACKLOG.md` to mark items 1/2/4 as Edge-confirmed and narrow the
   remaining open item down to just the word-event check, with clear step-by-step instructions
   for what to look for in the service worker console.

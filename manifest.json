@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "GrayTTS",
-  "version": "1.6",
-  "version_name": "1.6 (2026-08-12 04:10)",
+  "version": "1.7",
+  "version_name": "1.7 (2026-08-12 05:20)",
   "permissions": [
     "tts", 
     "contextMenus",
@@ -27,7 +27,8 @@
   "content_scripts": [
     {
       "matches": ["http://*/*", "https://*/*"],
-      "js": ["content.js"]
+      "js": ["content.js"],
+      "css": ["content.css"]
     }
   ],
   "commands": {
