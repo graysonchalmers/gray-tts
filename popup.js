@@ -4,7 +4,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const manifest = chrome.runtime.getManifest();
     const versionStamp = document.getElementById('versionStamp');
     if (versionStamp) {
-        versionStamp.innerHTML = `GrayTTS ${manifest.version_name || manifest.version}<br>Made by ChatGPT and Grayson Chalmers`;
+        versionStamp.innerHTML = `GrayTTS ${manifest.version_name || manifest.version}<br>Made by Grayson Chalmers and coding agents`;
     }
 
     const toggleButton = document.getElementById('toggle');
