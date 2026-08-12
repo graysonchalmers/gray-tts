@@ -49,18 +49,40 @@ function speak(text) {
     if (!text) return;
     chrome.storage.sync.get('ttsSettings', function(data) {
         const settings = (data && data.ttsSettings) || ttsSettings || {};
+        const bucket = (settings.perLang && settings.perLang[settings.lang || '']) || {};
         chrome.tts.speak(text, {
-            voiceName: settings.voiceName,
-            rate: settings.rate,
-            pitch: settings.pitch,
-            volume: settings.volume,
+            voiceName: bucket.voiceName,
+            rate: bucket.rate,
+            pitch: bucket.pitch,
+            volume: bucket.volume,
             onEvent: function(event) {
                 if (event.type === 'error') {
                     console.error('chrome.tts error:', event.errorMessage);
+                    showErrorBadge(event.errorMessage);
+                } else if (event.type === 'start') {
+                    clearBadge();
                 }
             }
         });
     });
+}
+
+// A silently-failed speak() is exactly the failure mode this extension has fought
+// hardest to avoid (see the CSP/MV3-respawn bugs in the README). Surface it on the
+// toolbar icon so a failed read is never just... nothing happening.
+let badgeClearTimeout = null;
+function showErrorBadge(message) {
+    chrome.action.setBadgeText({text: '!'});
+    chrome.action.setBadgeBackgroundColor({color: '#c62828'});
+    chrome.action.setTitle({title: `GrayTTS error: ${message || 'speech failed'}`});
+    clearTimeout(badgeClearTimeout);
+    badgeClearTimeout = setTimeout(clearBadge, 8000);
+}
+
+function clearBadge() {
+    clearTimeout(badgeClearTimeout);
+    chrome.action.setBadgeText({text: ''});
+    chrome.action.setTitle({title: 'GrayTTS'});
 }
 
 function createContextMenu() {

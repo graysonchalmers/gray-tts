@@ -15,6 +15,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const rateInput = document.getElementById('rate');
     const pitchInput = document.getElementById('pitch');
     const volumeInput = document.getElementById('volume');
+    const previewError = document.getElementById('previewError');
 
     // Labels for the sliders
     const rateLabel = document.getElementById('rateLabel');
@@ -22,6 +23,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const volumeLabel = document.getElementById('volumeLabel');
 
     let allVoices = [];
+    // Voice/rate/pitch/volume remembered per language, keyed by the language filter
+    // value ('' = All languages). Lets switching the filter recall what you last used
+    // for that language instead of dragging the previous language's voice along.
+    let perLang = {};
 
     // Load the full voice list once, then restore whatever the user had selected last.
     chrome.tts.getVoices(function(voices) {
@@ -29,24 +34,11 @@ document.addEventListener('DOMContentLoaded', () => {
         populateLangFilter();
 
         chrome.storage.sync.get('ttsSettings', function(data) {
-            const settings = data.ttsSettings || {};
+            const settings = migrateSettings(data.ttsSettings || {});
+            perLang = settings.perLang;
             langFilterSelect.value = settings.lang || '';
             populateVoiceDropdown(langFilterSelect.value);
-            if (settings.voiceName) {
-                voiceSelect.value = settings.voiceName;
-            }
-            if (settings.rate !== undefined) {
-                rateInput.value = settings.rate;
-                rateLabel.innerText = `Rate: ${settings.rate}`;
-            }
-            if (settings.pitch !== undefined) {
-                pitchInput.value = settings.pitch;
-                pitchLabel.innerText = `Pitch: ${settings.pitch}`;
-            }
-            if (settings.volume !== undefined) {
-                volumeInput.value = settings.volume;
-                volumeLabel.innerText = `Volume: ${settings.volume}`;
-            }
+            applyBucketToControls(getBucket(langFilterSelect.value));
         });
     });
 
@@ -66,6 +58,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     langFilterSelect.addEventListener('change', () => {
         populateVoiceDropdown(langFilterSelect.value);
+        applyBucketToControls(getBucket(langFilterSelect.value));
         sendTTSSettings();
     });
 
@@ -75,18 +68,51 @@ document.addEventListener('DOMContentLoaded', () => {
     pitchInput.addEventListener('input', sendTTSSettings);
     volumeInput.addEventListener('input', sendTTSSettings);
 
+    // Old flat-settings shape (one global voice/rate/pitch/volume) becomes the
+    // "All languages" bucket so existing installs don't lose their settings.
+    function migrateSettings(settings) {
+        if (settings.perLang) {
+            return {lang: settings.lang || '', perLang: settings.perLang};
+        }
+        const legacyBucket = {};
+        if (settings.voiceName !== undefined) legacyBucket.voiceName = settings.voiceName;
+        if (settings.rate !== undefined) legacyBucket.rate = settings.rate;
+        if (settings.pitch !== undefined) legacyBucket.pitch = settings.pitch;
+        if (settings.volume !== undefined) legacyBucket.volume = settings.volume;
+        return {lang: settings.lang || '', perLang: {'': legacyBucket}};
+    }
+
+    function getBucket(lang) {
+        return perLang[lang] || {};
+    }
+
+    function applyBucketToControls(bucket) {
+        if (bucket.voiceName) {
+            voiceSelect.value = bucket.voiceName;
+        }
+        rateInput.value = bucket.rate !== undefined ? bucket.rate : 1;
+        pitchInput.value = bucket.pitch !== undefined ? bucket.pitch : 1;
+        volumeInput.value = bucket.volume !== undefined ? bucket.volume : 1;
+        rateLabel.innerText = `Rate: ${rateInput.value}`;
+        pitchLabel.innerText = `Pitch: ${pitchInput.value}`;
+        volumeLabel.innerText = `Volume: ${volumeInput.value}`;
+    }
+
     function sendTTSSettings() {
-        let ttsSettings = {
-            message: 'update_tts_settings',
-            ttsSettings: {
-                lang: langFilterSelect.value,
-                voiceName: voiceSelect.value,
-                rate: parseFloat(rateInput.value),
-                pitch: parseFloat(pitchInput.value),
-                volume: parseFloat(volumeInput.value)
-            }
+        const lang = langFilterSelect.value;
+        perLang[lang] = {
+            voiceName: voiceSelect.value,
+            rate: parseFloat(rateInput.value),
+            pitch: parseFloat(pitchInput.value),
+            volume: parseFloat(volumeInput.value)
         };
-        chrome.runtime.sendMessage(ttsSettings, function(response) {
+        const ttsSettings = {lang, perLang};
+        chrome.storage.sync.set({ttsSettings}, function() {
+            if (chrome.runtime.lastError) {
+                console.error(chrome.runtime.lastError.message);
+            }
+        });
+        chrome.runtime.sendMessage({message: 'update_tts_settings', ttsSettings}, function() {
             if (chrome.runtime.lastError) {
                 console.error(chrome.runtime.lastError.message);
             }
@@ -133,14 +159,31 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    function showPreviewError(message) {
+        if (!previewError) return;
+        previewError.textContent = `⚠ ${message}`;
+        previewError.style.display = 'block';
+    }
+
+    function clearPreviewError() {
+        if (!previewError) return;
+        previewError.style.display = 'none';
+    }
+
     // Add an event listener for the "Preview" button
     document.getElementById('preview').addEventListener('click', () => {
+        clearPreviewError();
         const sampleText = "This is a sample text for voice preview.";
         chrome.tts.speak(sampleText, {
             voiceName: voiceSelect.value,
             rate: parseFloat(rateInput.value),
             pitch: parseFloat(pitchInput.value),
-            volume: parseFloat(volumeInput.value)
+            volume: parseFloat(volumeInput.value),
+            onEvent: function(event) {
+                if (event.type === 'error') {
+                    showPreviewError(event.errorMessage || 'Speech failed');
+                }
+            }
         });
     });
 });

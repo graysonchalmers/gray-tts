@@ -2,7 +2,7 @@
 Simple Chrome TTS extension
 
 ## Version
-1.4 (2026-08-12 02:30)
+1.5 (2026-08-12 03:15)
 
 Chrome's manifest `version` field only accepts dot-separated integers, so it can't hold a
 timestamp. The human-readable build stamp lives in `manifest.json`'s `version_name` field
@@ -11,6 +11,15 @@ the manifest so it can never go stale on its own. Bump both together on every me
 change: `version` gets a normal bump, `version_name` becomes `"<version> (<local date> <local time>)"`.
 
 ## Change Notes
+- 2026-08-12: Voice/rate/pitch/volume are now remembered **per language** (keyed by the
+  Language filter), instead of one global set. Switching the filter now recalls what you last
+  used for that language instead of carrying over whatever was picked for the previous one.
+  Existing single-bucket settings are migrated automatically into the "All languages" bucket
+  on first load, so no one loses their current voice pick.
+- 2026-08-12: chrome.tts failures are no longer silent. A `chrome.tts.speak()` error now shows
+  a red badge on the toolbar icon (with the error in the tooltip, auto-clearing after ~8s or on
+  the next successful speak) and, for the popup's Preview button specifically, an inline error
+  message under the button.
 - 2026-08-12: Visual pass on the popup — grouped the controls into labeled sections (Voice,
   Sliders, Actions), added a status badge, styled the sliders/buttons/dropdowns, and gave the
   Preview button an icon. No functional changes; all element IDs and `popup.js` logic are

@@ -144,6 +144,17 @@ input[type="range"] {
   accent-color: var(--accent);
 }
 
+.error {
+  display: none;
+  color: #c62828;
+  background: #fdecea;
+  border: 1px solid #f5c6c2;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 12px;
+  margin: 8px 0 0;
+}
+
 #hotkeyHint {
   text-align: center;
   color: var(--text-muted);
