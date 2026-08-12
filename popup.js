@@ -1,6 +1,4 @@
 document.addEventListener('DOMContentLoaded', () => {
-    let previewing = false;
-
     // Always read the version from the manifest so the popup can never drift
     // out of sync with what's actually installed.
     const manifest = chrome.runtime.getManifest();
@@ -12,6 +10,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const toggleButton = document.getElementById('toggle');
     const pauseButton = document.getElementById('pause');
     const statusText = document.getElementById('status');
+    const langFilterSelect = document.getElementById('langFilter');
     const voiceSelect = document.getElementById('voice');
     const rateInput = document.getElementById('rate');
     const pitchInput = document.getElementById('pitch');
@@ -22,21 +21,33 @@ document.addEventListener('DOMContentLoaded', () => {
     const pitchLabel = document.getElementById('pitchLabel');
     const volumeLabel = document.getElementById('volumeLabel');
 
-    // Populate the voice dropdown
-    populateVoiceDropdown();
+    let allVoices = [];
 
-    // Get the current TTS settings from storage and update the controls
-    chrome.storage.sync.get('ttsSettings', function(data) {
-        if (data.ttsSettings) {
-            voiceSelect.value = data.ttsSettings.voiceName;
-            rateInput.value = data.ttsSettings.rate;
-            pitchInput.value = data.ttsSettings.pitch;
-            volumeInput.value = data.ttsSettings.volume;
-            // Update the labels
-            rateLabel.innerText = `Rate: ${data.ttsSettings.rate}`;
-            pitchLabel.innerText = `Pitch: ${data.ttsSettings.pitch}`;
-            volumeLabel.innerText = `Volume: ${data.ttsSettings.volume}`;
-        }
+    // Load the full voice list once, then restore whatever the user had selected last.
+    chrome.tts.getVoices(function(voices) {
+        allVoices = voices;
+        populateLangFilter();
+
+        chrome.storage.sync.get('ttsSettings', function(data) {
+            const settings = data.ttsSettings || {};
+            langFilterSelect.value = settings.lang || '';
+            populateVoiceDropdown(langFilterSelect.value);
+            if (settings.voiceName) {
+                voiceSelect.value = settings.voiceName;
+            }
+            if (settings.rate !== undefined) {
+                rateInput.value = settings.rate;
+                rateLabel.innerText = `Rate: ${settings.rate}`;
+            }
+            if (settings.pitch !== undefined) {
+                pitchInput.value = settings.pitch;
+                pitchLabel.innerText = `Pitch: ${settings.pitch}`;
+            }
+            if (settings.volume !== undefined) {
+                volumeInput.value = settings.volume;
+                volumeLabel.innerText = `Volume: ${settings.volume}`;
+            }
+        });
     });
 
     toggleButton.addEventListener('click', () => {
@@ -53,6 +64,11 @@ document.addEventListener('DOMContentLoaded', () => {
         chrome.runtime.sendMessage({message: 'pause'});
     });
 
+    langFilterSelect.addEventListener('change', () => {
+        populateVoiceDropdown(langFilterSelect.value);
+        sendTTSSettings();
+    });
+
     // Send the TTS settings to the background script whenever they're changed
     voiceSelect.addEventListener('change', sendTTSSettings);
     rateInput.addEventListener('input', sendTTSSettings);
@@ -60,62 +76,71 @@ document.addEventListener('DOMContentLoaded', () => {
     volumeInput.addEventListener('input', sendTTSSettings);
 
     function sendTTSSettings() {
-        let voiceName = voiceSelect.value;
         let ttsSettings = {
             message: 'update_tts_settings',
             ttsSettings: {
-                voiceName: voiceName,
-                engine: 'responsiveVoice',
+                lang: langFilterSelect.value,
+                voiceName: voiceSelect.value,
                 rate: parseFloat(rateInput.value),
                 pitch: parseFloat(pitchInput.value),
                 volume: parseFloat(volumeInput.value)
             }
         };
-        if (!previewing) {
-            chrome.runtime.sendMessage(ttsSettings, function(response) {
-                if (chrome.runtime.lastError) {
-                    console.error(chrome.runtime.lastError.message);
-                }
-            });
-        }
+        chrome.runtime.sendMessage(ttsSettings, function(response) {
+            if (chrome.runtime.lastError) {
+                console.error(chrome.runtime.lastError.message);
+            }
+        });
         // Update the labels
         rateLabel.innerText = `Rate: ${rateInput.value}`;
         pitchLabel.innerText = `Pitch: ${pitchInput.value}`;
         volumeLabel.innerText = `Volume: ${volumeInput.value}`;
     }
 
-    function populateVoiceDropdown() {
-        // Clear the current options
-        voiceSelect.innerHTML = '';
+    function languageLabel(lang) {
+        try {
+            return `${new Intl.DisplayNames(['en'], {type: 'language'}).of(lang)} (${lang})`;
+        } catch (e) {
+            return lang;
+        }
+    }
 
-        // Populate the dropdown with the voices from the selected engine
-        let rvVoices = responsiveVoice.getVoices();
-        for (let i = 0; i < rvVoices.length; i++) {
+    function populateLangFilter() {
+        const langs = [...new Set(allVoices.map(v => v.lang).filter(Boolean))].sort();
+
+        langFilterSelect.innerHTML = '';
+        let allOption = document.createElement('option');
+        allOption.value = '';
+        allOption.text = `All languages (${allVoices.length})`;
+        langFilterSelect.add(allOption);
+
+        for (const lang of langs) {
             let option = document.createElement('option');
-            option.text = rvVoices[i].name;
+            option.value = lang;
+            option.text = languageLabel(lang);
+            langFilterSelect.add(option);
+        }
+    }
+
+    function populateVoiceDropdown(lang) {
+        const voices = lang ? allVoices.filter(v => v.lang === lang) : allVoices;
+        voiceSelect.innerHTML = '';
+        for (const voice of voices) {
+            let option = document.createElement('option');
+            option.value = voice.voiceName;
+            option.text = voice.voiceName;
             voiceSelect.add(option);
         }
     }
 
-    function previewVoice() {
-        let voiceName = voiceSelect.value;
-        let sampleText = "This is a sample text for voice preview.";
-
-        responsiveVoice.speak(sampleText, voiceName, {
+    // Add an event listener for the "Preview" button
+    document.getElementById('preview').addEventListener('click', () => {
+        const sampleText = "This is a sample text for voice preview.";
+        chrome.tts.speak(sampleText, {
+            voiceName: voiceSelect.value,
             rate: parseFloat(rateInput.value),
             pitch: parseFloat(pitchInput.value),
             volume: parseFloat(volumeInput.value)
         });
-    }
-
-    // Populate the voice dropdown with ResponsiveVoice voices
-    let rvVoices = responsiveVoice.getVoices();
-    for (let i = 0; i < rvVoices.length; i++) {
-        let option = document.createElement('option');
-        option.text = rvVoices[i].name;
-        voiceSelect.add(option);
-    }
-
-    // Add an event listener for the "Preview" button
-    document.getElementById('preview').addEventListener('click', previewVoice);
+    });
 });

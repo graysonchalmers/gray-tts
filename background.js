@@ -11,9 +11,9 @@ chrome.runtime.onInstalled.addListener(() => {
     });
 });
 
-chrome.contextMenus.onClicked.addListener((info, tab) => {
-    if (extensionEnabled && tab && tab.id) {
-        speakInTab(tab.id, info.selectionText);
+chrome.contextMenus.onClicked.addListener((info) => {
+    if (extensionEnabled) {
+        speak(info.selectionText);
     }
 });
 
@@ -31,16 +31,36 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         });
     } else if (request.message === 'pause') {
         chrome.tts.pause();
-    } else if (request.selection && sender.tab && sender.tab.id) {
-        speakInTab(sender.tab.id, request.selection);
+    } else if (request.selection) {
+        speak(request.selection);
     }
 });
 
-// responsiveVoice needs a real window/document, which a service worker doesn't have —
-// speaking happens in the content script of the target tab instead.
-function speakInTab(tabId, text) {
+// chrome.tts speaks natively via the OS/browser TTS engine, entirely inside the
+// extension — unlike the old ResponsiveVoice-over-remote-audio approach, it never touches
+// a page's Content Security Policy (which is what silently blocked speech on CSP-strict
+// sites like GitHub).
+//
+// The MV3 service worker gets torn down after ~30s idle and respawns fresh on the next
+// event (e.g. a context-menu click or the hotkey), which resets the in-memory
+// `ttsSettings` variable back to {}. Reading storage here instead of trusting that cache
+// avoids losing saved settings whenever the service worker respawns.
+function speak(text) {
     if (!text) return;
-    chrome.tabs.sendMessage(tabId, {message: 'speak_text', text: text, ttsSettings: ttsSettings});
+    chrome.storage.sync.get('ttsSettings', function(data) {
+        const settings = (data && data.ttsSettings) || ttsSettings || {};
+        chrome.tts.speak(text, {
+            voiceName: settings.voiceName,
+            rate: settings.rate,
+            pitch: settings.pitch,
+            volume: settings.volume,
+            onEvent: function(event) {
+                if (event.type === 'error') {
+                    console.error('chrome.tts error:', event.errorMessage);
+                }
+            }
+        });
+    });
 }
 
 function createContextMenu() {
@@ -63,7 +83,7 @@ chrome.commands.onCommand.addListener(function(command) {
                     return;
                 }
                 if (response && response.selection) {
-                    speakInTab(tab.id, response.selection);
+                    speak(response.selection);
                 }
             });
         });
