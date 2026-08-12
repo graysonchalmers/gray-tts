@@ -1,35 +1,51 @@
 <!DOCTYPE html>
 <html>
 <head>
+<meta charset="UTF-8">
 <link rel="stylesheet" type="text/css" href="styles.css">
 </head>
 <body>
 
-<p>Language:</p>
-<select id="langFilter"></select>
+<header id="header">
+  <span id="headerTitle">GrayTTS</span>
+  <span id="status">Status: Enabled</span>
+</header>
 
-<p>Voice:</p>
-<select id="voice"></select>
-<button id="preview">Preview</button>
+<section class="group">
+  <label for="langFilter">Language</label>
+  <select id="langFilter"></select>
 
-<p id="rateLabel">Rate:</p>
-<input type="range" id="rate" min="0.1" max="10" step="0.1" value="1">
+  <label for="voice">Voice</label>
+  <div class="row">
+    <select id="voice"></select>
+    <button id="preview" class="secondary" title="Play a sample with the current settings">▶ Preview</button>
+  </div>
+</section>
 
-<p id="pitchLabel">Pitch:</p>
-<input type="range" id="pitch" min="0" max="2" step="0.1" value="1">
+<section class="group">
+  <div class="slider-row">
+    <label for="rate" id="rateLabel">Rate</label>
+    <input type="range" id="rate" min="0.1" max="10" step="0.1" value="1">
+  </div>
+  <div class="slider-row">
+    <label for="pitch" id="pitchLabel">Pitch</label>
+    <input type="range" id="pitch" min="0" max="2" step="0.1" value="1">
+  </div>
+  <div class="slider-row">
+    <label for="volume" id="volumeLabel">Volume</label>
+    <input type="range" id="volume" min="0" max="1" step="0.1" value="1">
+  </div>
+</section>
 
-<p id="volumeLabel">Volume:</p>
-<input type="range" id="volume" min="0" max="1" step="0.1" value="1">
+<section class="group row">
+  <button id="toggle">Enable/Disable</button>
+  <button id="pause" class="secondary">Pause</button>
+</section>
 
-<hr/>
-<button id="toggle">Enable/Disable</button>
-<button id="pause">Pause</button>
-<p id="status">Status: Enabled</p>
-<p>Hotkey: Ctrl+Shift+Y</p>
+<p id="hotkeyHint">Hotkey: <kbd>Ctrl+Shift+Y</kbd></p>
 
-<hr/>
-<p id="versionStamp">GrayTTS<br>
-Made by ChatGPT and Grayson Chalmers</p>
+<footer id="versionStamp">GrayTTS<br>
+Made by ChatGPT and Grayson Chalmers</footer>
 
 <script src="popup.js"></script>
 

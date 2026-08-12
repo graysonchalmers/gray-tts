@@ -2,7 +2,7 @@
 Simple Chrome TTS extension
 
 ## Version
-1.1 (2026-08-11 22:16)
+1.4 (2026-08-12 02:30)
 
 Chrome's manifest `version` field only accepts dot-separated integers, so it can't hold a
 timestamp. The human-readable build stamp lives in `manifest.json`'s `version_name` field
@@ -11,6 +11,10 @@ the manifest so it can never go stale on its own. Bump both together on every me
 change: `version` gets a normal bump, `version_name` becomes `"<version> (<local date> <local time>)"`.
 
 ## Change Notes
+- 2026-08-12: Visual pass on the popup — grouped the controls into labeled sections (Voice,
+  Sliders, Actions), added a status badge, styled the sliders/buttons/dropdowns, and gave the
+  Preview button an icon. No functional changes; all element IDs and `popup.js` logic are
+  unchanged.
 - 2026-08-12: Added a language filter dropdown above the voice list in the popup, since
   `chrome.tts.getVoices()` returns every installed system voice unfiltered (long list). The
   filter persists across popup opens like the other TTS settings.
