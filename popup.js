@@ -18,6 +18,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const pitchInput = document.getElementById('pitch');
     const volumeInput = document.getElementById('volume');
     const previewError = document.getElementById('previewError');
+    const showHighlightCheckbox = document.getElementById('showHighlight');
+    const showOverlayCheckbox = document.getElementById('showOverlay');
 
     // Labels for the sliders
     const rateLabel = document.getElementById('rateLabel');
@@ -43,6 +45,8 @@ document.addEventListener('DOMContentLoaded', () => {
             langFilterSelect.value = settings.lang || '';
             populateVoiceDropdown(langFilterSelect.value);
             applyBucketToControls(GrayTTSSettings.getBucket(perLang, langFilterSelect.value));
+            showHighlightCheckbox.checked = rawSettings.showHighlight !== false;
+            showOverlayCheckbox.checked = rawSettings.showOverlay !== false;
             // Persist the migrated shape immediately so background.js (which handles
             // right-click/hotkey speech and may run before the popup is ever reopened)
             // isn't left reading the old flat shape as an empty perLang bucket.
@@ -85,6 +89,8 @@ document.addEventListener('DOMContentLoaded', () => {
     rateInput.addEventListener('input', sendTTSSettings);
     pitchInput.addEventListener('input', sendTTSSettings);
     volumeInput.addEventListener('input', sendTTSSettings);
+    showHighlightCheckbox.addEventListener('change', sendTTSSettings);
+    showOverlayCheckbox.addEventListener('change', sendTTSSettings);
 
     function applyBucketToControls(bucket) {
         if (bucket.voiceName) {
@@ -106,7 +112,12 @@ document.addEventListener('DOMContentLoaded', () => {
             pitch: parseFloat(pitchInput.value),
             volume: parseFloat(volumeInput.value)
         };
-        const ttsSettings = {lang, perLang};
+        const ttsSettings = {
+            lang,
+            perLang,
+            showHighlight: showHighlightCheckbox.checked,
+            showOverlay: showOverlayCheckbox.checked
+        };
         chrome.storage.sync.set({ttsSettings}, function() {
             if (chrome.runtime.lastError) {
                 console.error(chrome.runtime.lastError.message);

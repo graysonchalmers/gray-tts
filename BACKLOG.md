@@ -38,9 +38,28 @@ the thread that was already there.
    since the popup doesn't persist state across opens).
 5. ~~**A backlog home**~~ — done 2026-08-12: this file.
 
+6. **Word overlay** — built 2026-08-12 (v1.8), pending Edge verification. Bottom-center
+   Shadow-DOM box showing the current spoken word (RSVP/karaoke-style), independently
+   toggleable alongside the existing highlight via two new popup checkboxes. Full spec:
+   `docs/superpowers/specs/word-overlay.md`.
+7. **Save spoken output to an audio file** — requested 2026-08-12, not scoped/built.
+   **Not a small add** — `chrome.tts` (chosen specifically to kill the CSP/ResponsiveVoice
+   problems this project fought earlier) hands speech to the OS TTS engine directly and
+   gives the extension no access to the audio bytes, so there's no "grab the buffer, save
+   it" path today. Two real options, both real design decisions:
+   - Add a second, optional network-based TTS provider (Google/Azure/Amazon/ElevenLabs-
+     style) used only for the "save to file" path — reintroduces the exact CSP/API-key
+     dependency the `chrome.tts` migration removed, so it'd need to be additive/opt-in,
+     not a replacement.
+   - Capture system audio via `getDisplayMedia({audio: true})` while it plays — no new
+     dependency, but a heavy screen/audio-share permission prompt every time, and may not
+     even work depending on how Windows routes SAPI audio to the OS mixer (unverified).
+   Needs a scoping pass (probably `brainstorming`) before starting, not straight to code.
+
 ## Edge verification status
 
-As of 2026-08-12, Grayson confirmed all five backlog items work in a real loaded Edge
-extension, including read-along highlighting (item 3) after trying it directly. Backlog
-is fully shipped. Next additions should get appended here when a new idea comes up —
+As of 2026-08-12, Grayson confirmed backlog items 1–5 work in a real loaded Edge
+extension, including read-along highlighting (item 3) after trying it directly. Item 6
+(word overlay) is built and needs Edge verification next. Item 7 (save-to-audio) is
+logged but unscoped. Next additions should get appended here when a new idea comes up —
 this file has no reason to go stale otherwise.

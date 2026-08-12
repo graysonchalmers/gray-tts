@@ -84,7 +84,9 @@ function speak(text, tabId) {
                     chrome.tabs.sendMessage(tabId, {
                         message: 'highlight_progress',
                         charIndex: event.charIndex,
-                        length: event.length
+                        length: event.length,
+                        showHighlight: settings.showHighlight !== false,
+                        showOverlay: settings.showOverlay !== false
                     }, () => { if (chrome.runtime.lastError) { /* tab navigated away mid-speech — ignore */ } });
                 } else if ((event.type === 'end' || event.type === 'interrupted' || event.type === 'cancelled') && tabId !== undefined) {
                     sendClearHighlight(tabId);

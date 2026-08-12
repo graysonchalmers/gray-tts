@@ -80,10 +80,51 @@ function highlightProgress(charIndex, length) {
     }
 }
 
+// Bottom-center "spoken word" display, alongside (not replacing) the in-page highlight.
+// Lazily built on first use inside a Shadow DOM root so it's immune to the host page's CSS —
+// same reasoning as the CSS Custom Highlight API choice above, matters on framework-heavy
+// pages like Gemini.
+let overlayHost = null;
+let overlayText = null;
+
+function ensureOverlay() {
+    if (overlayHost) return overlayText;
+    overlayHost = document.createElement('div');
+    overlayHost.style.cssText = 'position: fixed; bottom: 20px; left: 50%; ' +
+        'transform: translateX(-50%); pointer-events: none; z-index: 2147483647; display: none;';
+    const shadow = overlayHost.attachShadow({mode: 'open'});
+    const style = document.createElement('style');
+    style.textContent = `
+        div { background: rgba(20, 20, 24, 0.9); border-radius: 8px;
+              box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4); color: #fff; font-weight: bold;
+              font-size: 22px; padding: 8px 22px; font-family: system-ui, sans-serif; }
+    `;
+    overlayText = document.createElement('div');
+    shadow.appendChild(style);
+    shadow.appendChild(overlayText);
+    document.body.appendChild(overlayHost);
+    return overlayText;
+}
+
+function renderOverlay(charIndex, length) {
+    if (!activeRange) return;
+    const subRange = getSubRange(activeRange, charIndex, length);
+    const word = subRange && subRange.toString();
+    if (!word) return;
+    const textEl = ensureOverlay();
+    textEl.textContent = word;
+    overlayHost.style.display = 'block';
+}
+
+function clearOverlay() {
+    if (overlayHost) overlayHost.style.display = 'none';
+}
+
 function clearHighlight() {
     if (highlightSupported) {
         CSS.highlights.delete(HIGHLIGHT_NAME);
     }
+    clearOverlay();
     activeRange = null;
 }
 
@@ -93,7 +134,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     } else if (request.message === 'capture_selection_range') {
         captureSelection();
     } else if (request.message === 'highlight_progress') {
-        highlightProgress(request.charIndex, request.length);
+        if (request.showHighlight) highlightProgress(request.charIndex, request.length);
+        if (request.showOverlay) renderOverlay(request.charIndex, request.length);
     } else if (request.message === 'clear_highlight') {
         clearHighlight();
     }

@@ -144,6 +144,26 @@ input[type="range"] {
   accent-color: var(--accent);
 }
 
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--text);
+  margin: 6px 0;
+}
+
+.checkbox-row:first-child {
+  margin-top: 0;
+}
+
+.checkbox-row input[type="checkbox"] {
+  accent-color: var(--accent);
+}
+
 .error {
   display: none;
   color: #c62828;
