@@ -8,8 +8,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const toggleButton = document.getElementById('toggle');
-    const pauseButton = document.getElementById('pause');
-    const resumeButton = document.getElementById('resume');
+    const pauseResumeButton = document.getElementById('pauseResume');
     const stopButton = document.getElementById('stop');
     const statusText = document.getElementById('status');
     const langFilterSelect = document.getElementById('langFilter');
@@ -66,12 +65,43 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    pauseButton.addEventListener('click', () => {
-        chrome.runtime.sendMessage({message: 'pause'});
+    // Speech state ('idle' | 'speaking' | 'paused') lives in chrome.storage.session, written
+    // by background.js's chrome.tts event handlers — the popup is ephemeral and reopens fresh
+    // each time, so it can't track this itself. Read it on open and stay live via
+    // storage.onChanged so the button label never lies about whether it's actually paused.
+    let speechState = 'idle';
+
+    function applySpeechStateToButton() {
+        if (speechState === 'paused') {
+            pauseResumeButton.textContent = 'Resume';
+            pauseResumeButton.disabled = false;
+        } else if (speechState === 'speaking') {
+            pauseResumeButton.textContent = 'Pause';
+            pauseResumeButton.disabled = false;
+        } else {
+            pauseResumeButton.textContent = 'Pause';
+            pauseResumeButton.disabled = true;
+        }
+    }
+
+    chrome.storage.session.get('speechState', (data) => {
+        speechState = (data && data.speechState) || 'idle';
+        applySpeechStateToButton();
     });
 
-    resumeButton.addEventListener('click', () => {
-        chrome.runtime.sendMessage({message: 'resume'});
+    chrome.storage.onChanged.addListener((changes, area) => {
+        if (area === 'session' && changes.speechState) {
+            speechState = changes.speechState.newValue || 'idle';
+            applySpeechStateToButton();
+        }
+    });
+
+    pauseResumeButton.addEventListener('click', () => {
+        if (speechState === 'paused') {
+            chrome.runtime.sendMessage({message: 'resume'});
+        } else if (speechState === 'speaking') {
+            chrome.runtime.sendMessage({message: 'pause'});
+        }
     });
 
     stopButton.addEventListener('click', () => {

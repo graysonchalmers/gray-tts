@@ -33,11 +33,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         });
     } else if (request.message === 'pause') {
         chrome.tts.pause();
+        // Set state here rather than waiting for chrome.tts's own 'pause' event — not every
+        // voice/engine reliably fires it (same class of gap as 'word' events being
+        // voice-dependent), and we already know the outcome: we just asked it to pause. The
+        // popup only ever sends this when it already knows we're 'speaking' (see popup.js),
+        // so this is always a valid transition.
+        setSpeechState('paused');
     } else if (request.message === 'resume') {
         chrome.tts.resume();
+        setSpeechState('speaking');
     } else if (request.message === 'stop') {
         chrome.tts.stop();
         clearBadge();
+        setSpeechState('idle');
     } else if (request.selection) {
         speak(request.selection);
     }
@@ -58,6 +66,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 // doesn't highlight anything.
 function speak(text, tabId) {
     if (!text) return;
+    // A new read must always win, even over a *paused* utterance — chrome.tts.speak() is
+    // documented to auto-interrupt any in-progress speech, but empirically a paused
+    // utterance doesn't reliably get interrupted that way (observed: the new speak() call
+    // gets silently cancelled instead of starting, with no indication anything went wrong).
+    // Explicitly stopping first means a stuck paused state can never block a fresh read.
+    chrome.tts.stop();
     if (tabId !== undefined) {
         // Capture the selection's Range on the content-script side right as speech starts,
         // since that's the last moment we can be confident the selection hasn't changed.
@@ -77,9 +91,15 @@ function speak(text, tabId) {
                 if (event.type === 'error') {
                     console.error('chrome.tts error:', event.errorMessage);
                     showErrorBadge(event.errorMessage);
+                    setSpeechState('idle');
                     if (tabId !== undefined) sendClearHighlight(tabId);
                 } else if (event.type === 'start') {
                     clearBadge();
+                    setSpeechState('speaking');
+                } else if (event.type === 'pause') {
+                    setSpeechState('paused');
+                } else if (event.type === 'resume') {
+                    setSpeechState('speaking');
                 } else if (event.type === 'word' && tabId !== undefined) {
                     chrome.tabs.sendMessage(tabId, {
                         message: 'highlight_progress',
@@ -88,12 +108,21 @@ function speak(text, tabId) {
                         showHighlight: settings.showHighlight !== false,
                         showOverlay: settings.showOverlay !== false
                     }, () => { if (chrome.runtime.lastError) { /* tab navigated away mid-speech — ignore */ } });
-                } else if ((event.type === 'end' || event.type === 'interrupted' || event.type === 'cancelled') && tabId !== undefined) {
-                    sendClearHighlight(tabId);
+                } else if (event.type === 'end' || event.type === 'interrupted' || event.type === 'cancelled') {
+                    setSpeechState('idle');
+                    if (tabId !== undefined) sendClearHighlight(tabId);
                 }
             }
         });
     });
+}
+
+// Current speech state ('idle' | 'speaking' | 'paused'), persisted to chrome.storage.session
+// (survives the service worker being torn down, unlike a plain in-memory variable) so the
+// popup — which is ephemeral and reopens fresh each time — can show accurate Pause/Resume
+// state on open instead of the old stateless "was it paused? no way to tell" gap.
+function setSpeechState(state) {
+    chrome.storage.session.set({speechState: state});
 }
 
 function sendClearHighlight(tabId) {
