@@ -1,0 +1,7 @@
+{
+  "name": "graytts",
+  "private": true,
+  "scripts": {
+    "test": "node --test"
+  }
+}

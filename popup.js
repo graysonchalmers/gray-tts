@@ -38,11 +38,11 @@ document.addEventListener('DOMContentLoaded', () => {
         chrome.storage.sync.get('ttsSettings', function(data) {
             const rawSettings = data.ttsSettings || {};
             const wasLegacyShape = !rawSettings.perLang;
-            const settings = migrateSettings(rawSettings);
+            const settings = GrayTTSSettings.migrateSettings(rawSettings);
             perLang = settings.perLang;
             langFilterSelect.value = settings.lang || '';
             populateVoiceDropdown(langFilterSelect.value);
-            applyBucketToControls(getBucket(langFilterSelect.value));
+            applyBucketToControls(GrayTTSSettings.getBucket(perLang, langFilterSelect.value));
             // Persist the migrated shape immediately so background.js (which handles
             // right-click/hotkey speech and may run before the popup is ever reopened)
             // isn't left reading the old flat shape as an empty perLang bucket.
@@ -76,7 +76,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     langFilterSelect.addEventListener('change', () => {
         populateVoiceDropdown(langFilterSelect.value);
-        applyBucketToControls(getBucket(langFilterSelect.value));
+        applyBucketToControls(GrayTTSSettings.getBucket(perLang, langFilterSelect.value));
         sendTTSSettings();
     });
 
@@ -85,25 +85,6 @@ document.addEventListener('DOMContentLoaded', () => {
     rateInput.addEventListener('input', sendTTSSettings);
     pitchInput.addEventListener('input', sendTTSSettings);
     volumeInput.addEventListener('input', sendTTSSettings);
-
-    // Old flat-settings shape (one global voice/rate/pitch/volume) becomes the
-    // "All languages" bucket so existing installs don't lose their settings.
-    function migrateSettings(settings) {
-        if (settings.perLang) {
-            return {lang: settings.lang || '', perLang: settings.perLang};
-        }
-        const legacyBucket = {};
-        if (settings.voiceName !== undefined) legacyBucket.voiceName = settings.voiceName;
-        if (settings.rate !== undefined) legacyBucket.rate = settings.rate;
-        if (settings.pitch !== undefined) legacyBucket.pitch = settings.pitch;
-        if (settings.volume !== undefined) legacyBucket.volume = settings.volume;
-        const lang = settings.lang || '';
-        return {lang, perLang: {[lang]: legacyBucket}};
-    }
-
-    function getBucket(lang) {
-        return perLang[lang] || {};
-    }
 
     function applyBucketToControls(bucket) {
         if (bucket.voiceName) {

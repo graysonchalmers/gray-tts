@@ -1,3 +1,5 @@
+importScripts('lib/settings.js');
+
 let extensionEnabled = true;  // Keep track of whether the extension is enabled
 let ttsSettings = {};  // Store the TTS settings
 
@@ -65,7 +67,7 @@ function speak(text, tabId) {
     }
     chrome.storage.sync.get('ttsSettings', function(data) {
         const settings = (data && data.ttsSettings) || ttsSettings || {};
-        const bucket = getSpeakBucket(settings);
+        const bucket = GrayTTSSettings.getSpeakBucket(settings);
         chrome.tts.speak(text, {
             voiceName: bucket.voiceName,
             rate: bucket.rate,
@@ -96,22 +98,6 @@ function sendClearHighlight(tabId) {
     chrome.tabs.sendMessage(tabId, {message: 'clear_highlight'}, () => {
         if (chrome.runtime.lastError) { /* tab navigated away mid-speech — ignore */ }
     });
-}
-
-// Reads whichever settings shape happens to be in storage. Handles the case where the
-// popup's per-language migration hasn't run yet (e.g. right-click/hotkey used right after
-// an update, before the popup was ever reopened) by falling back to the old flat fields
-// instead of silently reading an empty bucket and losing the saved voice.
-function getSpeakBucket(settings) {
-    if (settings.perLang) {
-        return settings.perLang[settings.lang || ''] || {};
-    }
-    return {
-        voiceName: settings.voiceName,
-        rate: settings.rate,
-        pitch: settings.pitch,
-        volume: settings.volume
-    };
 }
 
 // A silently-failed speak() is exactly the failure mode this extension has fought
