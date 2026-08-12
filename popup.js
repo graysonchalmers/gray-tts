@@ -1,4 +1,14 @@
 document.addEventListener('DOMContentLoaded', () => {
+    let previewing = false;
+
+    // Always read the version from the manifest so the popup can never drift
+    // out of sync with what's actually installed.
+    const manifest = chrome.runtime.getManifest();
+    const versionStamp = document.getElementById('versionStamp');
+    if (versionStamp) {
+        versionStamp.innerHTML = `GrayTTS ${manifest.version_name || manifest.version}<br>Made by ChatGPT and Grayson Chalmers`;
+    }
+
     const toggleButton = document.getElementById('toggle');
     const pauseButton = document.getElementById('pause');
     const statusText = document.getElementById('status');

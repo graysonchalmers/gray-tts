@@ -11,15 +11,9 @@ chrome.runtime.onInstalled.addListener(() => {
     });
 });
 
-chrome.contextMenus.onClicked.addListener((info) => {
-    if (extensionEnabled) {
-        let options = {...ttsSettings};
-        if (options.voice) {
-            options.voiceName = options.voice;
-            delete options.voice;
-        }
-        // Add error handling
-        responsiveVoice.speak(info.selectionText, ttsSettings.voiceName, options);
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+    if (extensionEnabled && tab && tab.id) {
+        speakInTab(tab.id, info.selectionText);
     }
 });
 
@@ -30,26 +24,24 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     } else if (request.message === 'update_tts_settings') {
         // Save the new TTS settings to storage
         ttsSettings = request.ttsSettings;
-        // Add error handling
         chrome.storage.sync.set({ttsSettings: ttsSettings}, function() {
             if (chrome.runtime.lastError) {
                 console.error(chrome.runtime.lastError.message);
             }
         });
-        // Apply the new TTS settings
-        responsiveVoice.setDefaultVoice(ttsSettings.voiceName);
     } else if (request.message === 'pause') {
         chrome.tts.pause();
-    } else if (request.selection) {
-        let options = {...ttsSettings};
-        if (options.voice) {
-            options.voiceName = options.voice;
-            delete options.voice;
-        }
-        // Add error handling
-        responsiveVoice.speak(request.selection, ttsSettings.voiceName, options);
+    } else if (request.selection && sender.tab && sender.tab.id) {
+        speakInTab(sender.tab.id, request.selection);
     }
 });
+
+// responsiveVoice needs a real window/document, which a service worker doesn't have —
+// speaking happens in the content script of the target tab instead.
+function speakInTab(tabId, text) {
+    if (!text) return;
+    chrome.tabs.sendMessage(tabId, {message: 'speak_text', text: text, ttsSettings: ttsSettings});
+}
 
 function createContextMenu() {
     chrome.contextMenus.create({
@@ -63,14 +55,16 @@ function createContextMenu() {
 chrome.commands.onCommand.addListener(function(command) {
     if (command === 'read_selection' && extensionEnabled) {
         chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-            chrome.tabs.sendMessage(tabs[0].id, {text: 'get_selection'}, function(response) {
-                let options = {...ttsSettings};
-                if (options.voice) {
-                    options.voiceName = options.voice;
-                    delete options.voice;
+            const tab = tabs[0];
+            if (!tab) return;
+            chrome.tabs.sendMessage(tab.id, {text: 'get_selection'}, function(response) {
+                if (chrome.runtime.lastError) {
+                    console.error(chrome.runtime.lastError.message);
+                    return;
                 }
-                // Add error handling
-                responsiveVoice.speak(response.selection, ttsSettings.voiceName, options);
+                if (response && response.selection) {
+                    speakInTab(tab.id, response.selection);
+                }
             });
         });
     }

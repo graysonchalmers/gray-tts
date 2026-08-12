@@ -1,7 +1,8 @@
 {
   "manifest_version": 3,
   "name": "GrayTTS",
-  "version": "1.0",
+  "version": "1.1",
+  "version_name": "1.1 (2026-08-11 22:16)",
   "permissions": [
     "tts", 
     "contextMenus",
@@ -26,7 +27,7 @@
   "content_scripts": [
     {
       "matches": ["http://*/*", "https://*/*"],
-      "js": ["content.js"]  
+      "js": ["responsivevoice.js", "content.js"]
     }
   ],
   "commands": {
@@ -36,11 +37,5 @@
       },
       "description": "Read selected text with GrayTTS"
     }
-  },
-  "web_accessible_resources": [
-    {
-      "resources": ["responsivevoice.js"],
-      "matches": ["<all_urls>"]
-    }
-  ]
+  }
 }
