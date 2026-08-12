@@ -1,14 +1,10 @@
 # 🧭 Session Handoff — Tool-GrayTTS (GrayTTS)
 
-_Last updated: 2026-08-12 04:10 CT_
+_Last updated: 2026-08-12 04:30 CT_
 
-## 🧭 North Star
-_Proposed 2026-08-12, not yet explicitly confirmed by Grayson — treat as the working filter for
-new feature ideas, but re-check with him before leaning on it too heavily:_
-**"Reading any selected text on any page out loud should take one keystroke and never silently
-fail."** Every fix so far (CSP blocking ResponsiveVoice, MV3 service-worker resetting settings,
-now the visible-failure badge) has been in service of "never silently fail" without anyone
-naming it explicitly until this session.
+## 🧭 North Star & Backlog
+Moved to [`BACKLOG.md`](BACKLOG.md) — that's now the durable home for the roadmap so it
+survives session-log churn here. Check it before starting new feature work.
 
 ## 🎯 Current state
 GrayTTS speaks natively via `chrome.tts`. Popup got a full visual pass (commit `80d516f`), then
@@ -59,25 +55,10 @@ written — check `git log` for the real state, this section goes stale immediat
    console (the diagnostic above) — this single data point decides whether backlog item #3 is
    buildable at all on this setup.
 
-## 📋 Backlog (proposed 2026-08-12, ranked)
-1. ~~Voice memory per-language~~ — **done this session** (had a bug, since fixed — see above).
-2. ~~Visible failure state~~ — **done this session**.
-3. **Read-along highlighting** — blocked on the diagnostic above. `chrome.tts.speak` supports
-   word-boundary (`onEvent` type `'word'`) callbacks, but not every OS/engine voice fires them
-   with a usable `charIndex`. If they don't fire here, this item is dead on arrival and should
-   be dropped or rescoped, not built blind — the DOM-manipulation work involved (relaying
-   charIndex from background → content script → wrapping live text in a highlight span) runs on
-   every page (`content_scripts` matches `http://*/*`), which is real blast radius for a feature
-   that might not even activate.
-4. ~~Queue / stop control~~ — **done this session** (Resume + Stop buttons).
-5. **A backlog home** — this section, living in `HANDOFF.md`, is the backlog home for now.
-   Fine as long as sessions keep getting wrapped up; if this doc balloons, consider promoting
-   this section to its own `BACKLOG.md`.
-
 ## ❓ Open questions
-- North Star above — confirm with Grayson it's the right one-sentence filter, or replace it.
-- Does this setup's TTS voices fire `'word'` events? Blocks item #3 entirely — see diagnostic
-  above.
+- North Star (in `BACKLOG.md`) — confirm with Grayson it's the right one-sentence filter.
+- Does this setup's TTS voices fire `'word'` events? Blocks backlog item #3 entirely — see the
+  diagnostic note in `BACKLOG.md`.
 - Does Grayson want the "many voices sound the same" issue investigated further (e.g. is it a
   Windows/Edge TTS engine limitation, or are duplicate voice entries actually distinct)? He
   said he's fine with it for now ("I love what we got") — treat as low-priority unless raised
@@ -109,6 +90,16 @@ written — check `git log` for the real state, this section goes stale immediat
 ---
 
 ## 🕓 Session log
+### 2026-08-12 (part 4) — Promoted the backlog to BACKLOG.md
+- Pushed part 3's commit (`0770c73`) to `origin/main` on explicit request (`/github-push`),
+  without confirmation the Edge verification pass had happened yet — flagged that gap in chat
+  rather than blocking, since invoking the push skill directly reads as explicit "ship it".
+- Asked what "next task" meant (ambiguous — could've meant doing the Edge pass, this backlog
+  move, or something unrelated); Grayson picked backlog item #5.
+- Created `BACKLOG.md`: North Star + ranked backlog, moved out of `HANDOFF.md` verbatim (plus a
+  new "Not yet Edge-verified" section restating the four outstanding checks so they're not lost
+  in the move). `HANDOFF.md` now just links to it instead of duplicating the content.
+
 ### 2026-08-12 (part 3) — Migration bug fix, Stop/Resume controls, word-event diagnostic
 - Pushed part 2's commit (`418a5b7`) to `origin/main` on request.
 - Asked to "keep going" on the backlog. Called `advisor` before starting #3/#4 given #3's size —
