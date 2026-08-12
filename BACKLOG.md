@@ -7,8 +7,7 @@ file owns the standing roadmap. Update it whenever a backlog item ships or the
 ranking changes; no need to touch it just because a session ended.
 
 ## North Star
-_Proposed 2026-08-12, not yet explicitly confirmed by Grayson — treat as the working
-filter for new feature ideas, but re-check before leaning on it too heavily._
+_Confirmed by Grayson 2026-08-12._
 
 **"Reading any selected text on any page out loud should take one keystroke and never
 silently fail."**

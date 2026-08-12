@@ -1,10 +1,11 @@
 # 🧭 Session Handoff — Tool-GrayTTS (GrayTTS)
 
-_Last updated: 2026-08-12 05:35 CT_
+_Last updated: 2026-08-12 06:50 CT_
 
 ## 🧭 North Star & Backlog
 Moved to [`BACKLOG.md`](BACKLOG.md) — that's now the durable home for the roadmap so it
-survives session-log churn here. Check it before starting new feature work.
+survives session-log churn here. Check it before starting new feature work. **North Star is
+now Grayson-confirmed** (was previously just proposed).
 
 ## 🎯 Current state
 GrayTTS speaks natively via `chrome.tts`. Popup got a full visual pass (commit `80d516f`), then
@@ -48,46 +49,124 @@ Current version: 1.7 (2026-08-12 05:20, commit `52bd64c`, pushed). Grayson confi
 highlighting all work in a real loaded Edge extension.
 
 ## 📌 Where we stopped
-Everything through v1.7 is committed and pushed. All five original backlog items are shipped
-and Edge-confirmed. No code changes pending — see `BACKLOG.md` for what might come next.
+Mid-brainstorm on a new feature: a **word overlay** (RSVP/karaoke-style — the currently-spoken
+word shown big and bold in a fixed bottom-center box), on top of the existing in-page
+highlighting. Design is ~90% settled (see below) but the very last confirmation round
+("does this close it out, or anything to adjust?") hadn't gotten a reply before the session
+ended — **no design doc written yet, no code written for it.**
 
 ## ▶️ Next concrete step
-None queued. `BACKLOG.md`'s ranked list is fully shipped — next session starts from a clean
-slate unless Grayson has a new idea to add there.
+Resume the word-overlay brainstorm: re-ask "does the design close it out, or anything to
+adjust?", then write the spec to `docs/superpowers/specs/`, then hand off to `writing-plans`
+for an implementation plan. Alternatives:
+- Skip straight to implementation if Grayson just says "looks good, build it" — the design
+  below is detailed enough to build from directly, formal spec-doc step is optional overhead
+  for a feature this size if he'd rather move fast.
+- Verify the new V: backup first (see open questions) before touching more code, if Grayson
+  wants that closed out first.
+
+### Word-overlay design (locked in this session, not yet written to a spec file)
+- **Settings:** two independent checkboxes in the popup — "Highlight word on page" and "Show
+  word overlay" — in a new `<section class="group">` between the rate/pitch/volume sliders and
+  the Enable/Disable button. Stored as top-level `ttsSettings.showHighlight` /
+  `ttsSettings.showOverlay` booleans (global, not per-language). Missing key = `true` (both on
+  by default, no migration step needed — existing installs keep highlighting and gain the
+  overlay automatically).
+- **Data flow:** `background.js`'s `speak()` already reads `settings` before calling
+  `chrome.tts.speak()`; read `showHighlight`/`showOverlay` there too (default `!== false`) and
+  attach both as flags on the existing `highlight_progress` message — no new message type.
+  `content.js`'s handler gates the existing CSS-highlight call and a new overlay-render call
+  independently. Same scope as today: only fires when `tabId` is set (right-click/hotkey), so
+  Preview is untouched. Word text for the overlay is free — `getSubRange()` already returns the
+  matching `Range`, so `subRange.toString()` is the spoken word.
+- **Rendering:** new `renderOverlay(word)` / folded into the existing `clearHighlight()` for
+  hiding, in `content.js`. Lazily-created host element with a **Shadow DOM** root (isolates
+  from host-page CSS, same reasoning as the CSS Custom Highlight API choice for the in-page
+  highlight — matters on framework-heavy pages like Gemini). `pointer-events: none`, very high
+  `z-index`, fixed `bottom: 20px; left: 50%; transform: translateX(-50%)`.
+- **Visual style** (chosen via the brainstorming skill's visual companion, Grayson clicked
+  through mockups): dark rounded box (`rgba(20,20,24,0.9)`, `border-radius: 8px`, drop shadow),
+  white bold **22px** text (the "compact" size, not the larger 30px/42px options shown), padding
+  `8px 22px`. Runs *alongside* the in-page highlight, not replacing it — independently toggled.
+- **Testing plan:** throwaway static test page in the Browser pane first (same approach used
+  for the original highlight feature), then real verification in a loaded Edge extension —
+  both checkboxes independently, plus confirming Preview stays unaffected.
 
 ## ❓ Open questions
-- North Star (in `BACKLOG.md`) — confirm with Grayson it's the right one-sentence filter.
+- The word-overlay design's final confirmation round is unanswered (see above) — first thing
+  next session.
+- **V: backup unverified.** `_Backup\` (see below) was written, but V: showed as
+  `Unavailable` in `net use` and the UNC path `\\Moby\vault\Projects work` also didn't resolve
+  from this session's shell — could be the NAS genuinely being down, or this session's shell
+  not reaching the LAN the way an interactive desktop session does. Grayson said to skip
+  verifying for now; first backup run is still unconfirmed whenever V: is next available.
 - Does Grayson want the "many voices sound the same" issue investigated further (e.g. is it a
   Windows/Edge TTS engine limitation, or are duplicate voice entries actually distinct)? He
   said he's fine with it for now ("I love what we got") — treat as low-priority unless raised
   again.
 - No test/build tooling exists for this project (it's a plain unpacked MV3 extension, no
-  bundler) — confirmed intentional enough to not touch; a `.claude/launch.json` was added this
-  session purely to preview `popup.html`'s static rendering in the Browser pane, not as a test
-  harness.
+  bundler) — confirmed intentional enough to not touch; a `.claude/launch.json` was added a
+  prior session purely to preview `popup.html`'s static rendering in the Browser pane, not as a
+  test harness.
 
 ## 🗂️ Changed this session
-- Branch: `main` · Files: `background.js`, `content.js`, `popup.html`, `popup.js`,
-  `manifest.json`, `README.md` · Removed: `responsivevoice.js` (and untracked `rv-config.js`,
-  deleted, never committed)
-- **Decision:** Dropped ResponsiveVoice entirely in favor of `chrome.tts` (the native
-  browser/OS TTS API). Why: ResponsiveVoice fetched audio from `responsivevoice.org` inside
-  the content script, which inherits the host page's Content Security Policy — CSP-strict
-  sites (GitHub confirmed) silently blocked the audio load with **no visible error**, which is
-  what made this bug so hard to pin down. `chrome.tts` speaks from the background service
-  worker with no remote fetch, so it's immune to page CSP entirely. Bonus: much less code
-  (content.js dropped from a speak_text handler to a 4-line get_selection responder).
-- **Decision:** `background.js`'s `speakInTab`/`speak` now reads `ttsSettings` fresh from
-  `chrome.storage.sync` on every call instead of trusting the in-memory `ttsSettings`
-  variable. Why: MV3 service workers get torn down after ~30s idle and respawn fresh on the
-  next event, silently resetting that variable to `{}` — this was actively causing "select
-  text, right-click, nothing happens, no error" before the CSP issue was even found.
-- **Decision:** Added `langFilterSelect` to popup, using `Intl.DisplayNames` for
-  human-readable language labels, persisted to `ttsSettings.lang` in `chrome.storage.sync`.
+- Branch: `main` · Files: `BACKLOG.md` (North Star confirmed), new `.gitignore` (excludes
+  `.superpowers/`, the brainstorming skill's throwaway mockup workspace) · New: `Backup\`
+  (backup tooling, see below)
+- **Decision:** Set up a two-layer local→V: backup (`Backup\backup-graytts.ps1` +
+  `Backup\Backup GrayTTS to V.bat`, via the `project-backup` skill) mirroring to
+  `V:\Projects work\GrayTTS\current\` plus dated zip snapshots in `\snapshots\` (keeps last
+  10). **Named `Backup\`, not the skill's usual `_Backup\`** — Chrome/Edge refuses to load an
+  unpacked extension with any root folder starting with `_` ("reserved for use by the system"),
+  which is exactly what happened here; caught and fixed same session by renaming. Worth
+  remembering for any future browser-extension project using this skill.
+- **Decision:** North Star (in `BACKLOG.md`) explicitly confirmed by Grayson, no wording
+  changes requested.
+- Brainstormed (not yet built) the word-overlay feature — see "Next concrete step" above for
+  the full locked-in design.
 
 ---
 
 ## 🕓 Session log
+### 2026-08-12 (part 7) — Backup setup, extension-load fix, word-overlay brainstorm
+- Ran `pickup`: confirmed everything through v1.7 clean and in sync with `origin/main`, no
+  drift. Grayson asked to set up a project backup.
+- Ran `project-backup`: wrote `_Backup\backup-graytts.ps1` + `.bat`, mirroring to
+  `V:\Projects work\GrayTTS`, excluding `.git`/`node_modules`, keeping 10 snapshots. V: wasn't
+  mounted in this session's shell when tested (`Test-Path 'V:\'` → false); flagged as unverified
+  rather than assumed working.
+- Grayson said "V: should be connected" and asked to retry — still unreachable, and this time
+  traced further: `net use` showed V: mapped to `\\Moby\vault` but status **Unavailable**, and
+  the raw UNC path was also unreachable. Surfaced both possibilities (NAS actually down vs. this
+  session's shell not reaching the LAN) rather than guessing; Grayson said skip it for now.
+- Confirmed the North Star wording in `BACKLOG.md` — no changes requested, just a sign-off.
+- Grayson asked about the read-along highlighting feature again, seemingly having forgotten it
+  already shipped in v1.7 — clarified it's built and working (right-click/hotkey only, not
+  Preview), pointed him at how to trigger it, and used the moment to distinguish it from a
+  *different* idea he was actually describing: a bottom-center single-word overlay display.
+- Grayson tried loading the extension in Edge and hit `Cannot load extension with file or
+  directory name _Backup. Filenames starting with "_" are reserved for use by the system.` —
+  root cause: Chrome/Edge's unpacked-extension loader scans every folder under the extension
+  root and rejects underscore-prefixed names, and `_Backup\` from the project-backup skill's
+  default naming landed right inside `C:\Projects-local\Tool-GrayTTS` (the extension's own
+  root). Fixed by renaming to `Backup\` — no code inside the scripts referenced the old name
+  (`$PSScriptRoot` / `%~dp0` are both relative), so the rename was a clean `mv` with no other
+  changes needed. Grayson reloaded the extension and confirmed it works.
+- Grayson confirmed wanting the word-overlay feature built. Ran `brainstorming`: walked through
+  design questions one at a time (overlay runs alongside the highlight, not replacing it; a
+  settings toggle rather than hardcoding it on; default both-on). Used the brainstorming skill's
+  visual companion (browser mockup server) for the two genuinely visual questions — overlay
+  style (offered 3: minimal pill, caption bar, big spotlight — Grayson picked **spotlight** by
+  clicking the mockup) and size (offered 3: 22px/30px/42px — Grayson picked **22px/compact** via
+  chat after a browser click didn't register that round). Landed on two independent popup
+  checkboxes (not a four-way mode picker) after discussing tradeoffs. Design detail above.
+- Visual companion server exited on its own partway through (background task reported failed,
+  exit 127) — didn't block anything since the visual questions were already answered by then;
+  noted for awareness, not investigated further since it wasn't blocking.
+- Design's last confirmation round was still open when `/wrap-up + /github-push` was invoked —
+  session ended before code was written.
+
+### 2026-08-12 (part 6) — Read-along highlighting, and a false-alarm rvApiKey scare
 ### 2026-08-12 (part 6) — Read-along highlighting, and a false-alarm rvApiKey scare
 - Grayson reported `Uncaught ReferenceError: rvApiKey is not defined` on `gemini.google.com`,
   pointing at `extensions://<id>/responsivevoice.js` — alarming since that file was removed in
