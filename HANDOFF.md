@@ -1,6 +1,6 @@
 # 🧭 Session Handoff — Tool-GrayTTS (GrayTTS)
 
-_Last updated: 2026-08-12 05:20 CT_
+_Last updated: 2026-08-12 05:35 CT_
 
 ## 🧭 North Star & Backlog
 Moved to [`BACKLOG.md`](BACKLOG.md) — that's now the durable home for the roadmap so it
@@ -43,22 +43,17 @@ folder (no responsivevoice.js anywhere on it), and the actual cause was a stale 
 console entry (likely "Preserve log") that survived an extension reload + tab refresh. Clearing
 the console and hard-refreshing confirmed it's gone. Not a regression, no code changed for this.
 
-Current version: 1.7 (2026-08-12 05:20). Grayson confirmed 2026-08-12 that per-language voice
-memory, the error badge, and Resume/Stop all work in a real loaded Edge extension (general
-check, not scenario-by-scenario). Read-along highlighting is code-complete and its offset-mapping
-logic is verified against a live DOM (including a word split across a `<b>` tag and an overrun
-length value — see README) — but **not yet tested in the real extension on a real page**.
+Current version: 1.7 (2026-08-12 05:20, commit `52bd64c`, pushed). Grayson confirmed
+2026-08-12 that per-language voice memory, the error badge, Resume/Stop, and now read-along
+highlighting all work in a real loaded Edge extension.
 
 ## 📌 Where we stopped
-Just finished building read-along highlighting. Not yet committed as of this note — check
-`git log` for the real state.
+Everything through v1.7 is committed and pushed. All five original backlog items are shipped
+and Edge-confirmed. No code changes pending — see `BACKLOG.md` for what might come next.
 
 ## ▶️ Next concrete step
-Verify read-along highlighting in Edge: select a paragraph on a real page, right-click → "Read
-with GrayTTS" (or the hotkey), and confirm the currently-spoken word gets visually highlighted
-and the highlight clears cleanly at the end / on Stop. Worth trying on both a plain page and a
-JS-heavy one (Gemini, since that's already open) to make sure a re-rendering page doesn't break
-it — the whole point of using the CSS Highlight API instead of DOM wrapping was to survive that.
+None queued. `BACKLOG.md`'s ranked list is fully shipped — next session starts from a clean
+slate unless Grayson has a new idea to add there.
 
 ## ❓ Open questions
 - North Star (in `BACKLOG.md`) — confirm with Grayson it's the right one-sentence filter.

@@ -41,14 +41,7 @@ the thread that was already there.
 
 ## Edge verification status
 
-As of 2026-08-12, Grayson confirmed items 1, 2, and 4 (voice memory, error badge,
-Resume/Stop) all work in a real loaded Edge extension — general "looks good" check,
-not a specific per-scenario walkthrough. Item 3 (read-along highlighting) is
-code-complete and its offset math is verified against a live DOM, but the actual
-highlight has **not yet been seen in a real loaded extension on a real page** — that's
-the current open item. Try it on both a plain page and a JS-heavy one (e.g. Gemini),
-since surviving a re-rendering page without breaking is the whole reason it uses the
-CSS Highlight API instead of wrapping text in new elements.
-
-Backlog is now fully shipped (1–5 all done). Next additions should get appended here
-when a new idea comes up — this file has no reason to go stale otherwise.
+As of 2026-08-12, Grayson confirmed all five backlog items work in a real loaded Edge
+extension, including read-along highlighting (item 3) after trying it directly. Backlog
+is fully shipped. Next additions should get appended here when a new idea comes up —
+this file has no reason to go stale otherwise.
