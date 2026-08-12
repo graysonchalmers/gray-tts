@@ -1,6 +1,6 @@
 # 🧭 Session Handoff — Tool-GrayTTS (GrayTTS)
 
-_Last updated: 2026-08-12 06:50 CT_
+_Last updated: 2026-08-12 (later session) CT_
 
 ## 🧭 North Star & Backlog
 Moved to [`BACKLOG.md`](BACKLOG.md) — that's now the durable home for the roadmap so it
@@ -8,8 +8,20 @@ survives session-log churn here. Check it before starting new feature work. **No
 now Grayson-confirmed** (was previously just proposed).
 
 ## 🎯 Current state
-GrayTTS speaks natively via `chrome.tts`. Popup got a full visual pass (commit `80d516f`), then
-three backlog items were built:
+Version **1.9** (commit `053f4a8`, pushed, level with `origin/main`). Since the last full
+handoff update, two more versions shipped in an unlogged session (reconstructed from git):
+- **v1.8** (`6555f3c`) — the **word overlay** got built per the locked design below: bottom-center
+  Shadow-DOM box showing the current spoken word, independently toggleable alongside the in-page
+  highlight via two new popup checkboxes. Spec landed at `docs/superpowers/specs/word-overlay.md`.
+- **v1.9** (`053f4a8`) — a new read now overrides a paused utterance instead of getting stuck,
+  and Pause/Resume merged into one state-aware toggle (superseding the earlier three-button call).
+
+**Neither v1.8 nor v1.9 is recorded as Edge-verified.** Grayson is doing that check now:
+(1) overlay appears on right-click read and its checkbox toggles it, (2) highlight checkbox
+toggles independently, (3) Pause becomes Resume, (4) a new read while paused actually speaks.
+
+Older context (still true) — GrayTTS speaks natively via `chrome.tts`. Popup got a full visual
+pass (commit `80d516f`), then three backlog items were built:
 1. **Per-language voice memory** — voice/rate/pitch/volume stored per language
    (`ttsSettings.perLang[lang]`), keyed off the Language filter dropdown. Switching the filter
    recalls what you last used for that language. Old single-bucket settings auto-migrate on
@@ -49,23 +61,19 @@ Current version: 1.7 (2026-08-12 05:20, commit `52bd64c`, pushed). Grayson confi
 highlighting all work in a real loaded Edge extension.
 
 ## 📌 Where we stopped
-Mid-brainstorm on a new feature: a **word overlay** (RSVP/karaoke-style — the currently-spoken
-word shown big and bold in a fixed bottom-center box), on top of the existing in-page
-highlighting. Design is ~90% settled (see below) but the very last confirmation round
-("does this close it out, or anything to adjust?") hadn't gotten a reply before the session
-ended — **no design doc written yet, no code written for it.**
+Grayson went off to **Edge-verify v1.8 (word overlay) + v1.9 (pause toggle/override)** — the
+four checks listed under Current state. Result not yet reported. Meanwhile the desktop-TTS
+idea was logged as **backlog item 8** in `BACKLOG.md`.
 
 ## ▶️ Next concrete step
-Resume the word-overlay brainstorm: re-ask "does the design close it out, or anything to
-adjust?", then write the spec to `docs/superpowers/specs/`, then hand off to `writing-plans`
-for an implementation plan. Alternatives:
-- Skip straight to implementation if Grayson just says "looks good, build it" — the design
-  below is detailed enough to build from directly, formal spec-doc step is optional overhead
-  for a feature this size if he'd rather move fast.
-- Verify the new V: backup first (see open questions) before touching more code, if Grayson
-  wants that closed out first.
+Get the Edge-check result from Grayson and record it (BACKLOG.md "Edge verification status"
+section + this doc). If anything failed, that's the immediate fix. Alternatives:
+- If verification passed and he wants new work: scope **backlog item 8** (desktop TTS
+  companion — AutoHotkey global hotkey + SAPI, as a sibling `Util-*` project). Small enough to
+  draft the script in one sitting; brainstorm first only if he wants settings/voice-picking.
+- Close out the still-unverified V: backup first run (see open questions) if V: is reachable.
 
-### Word-overlay design (locked in this session, not yet written to a spec file)
+### Word-overlay design (locked 2026-08-12; since built in v1.8 — kept for reference)
 - **Settings:** two independent checkboxes in the popup — "Highlight word on page" and "Show
   word overlay" — in a new `<section class="group">` between the rate/pitch/volume sliders and
   the Enable/Disable button. Stored as top-level `ttsSettings.showHighlight` /
@@ -93,8 +101,10 @@ for an implementation plan. Alternatives:
   both checkboxes independently, plus confirming Preview stays unaffected.
 
 ## ❓ Open questions
-- The word-overlay design's final confirmation round is unanswered (see above) — first thing
-  next session.
+- **Did v1.8/v1.9 pass the Edge check?** Grayson was running it as this session ended —
+  first thing to confirm next session. (Also worth noting: both were pushed before being
+  recorded as verified, which is against the usual push-after-verification discipline unless
+  it happened off the record.)
 - **V: backup unverified.** `_Backup\` (see below) was written, but V: showed as
   `Unavailable` in `net use` and the UNC path `\\Moby\vault\Projects work` also didn't resolve
   from this session's shell — could be the NAS genuinely being down, or this session's shell
@@ -110,6 +120,27 @@ for an implementation plan. Alternatives:
   test harness.
 
 ## 🗂️ Changed this session
+- Branch: `main` · Files: `BACKLOG.md` (new item 8), `HANDOFF.md` (caught up to v1.9 reality)
+- **Decision:** the "read selected text outside the browser" idea lands as a **separate
+  sibling `Util-*` project**, not inside this repo — the extension loader scans every folder
+  under the extension root (same class of problem as the `_Backup` rename). Recommended shape:
+  AutoHotkey global hotkey → copy selection → speak via SAPI COM; identical voices to
+  `chrome.tts` since both use the OS SAPI engine. Full note in `BACKLOG.md` item 8.
+
+---
+
+## 🕓 Session log
+### 2026-08-12 (part 8) — Pickup, backlog item 8, handoff catch-up
+- Ran `pickup`: found HANDOFF.md a session behind git — v1.8 (word overlay, `6555f3c`) and
+  v1.9 (pause toggle/override fix, `053f4a8`) were built and pushed in an unlogged session;
+  BACKLOG.md had partially caught up (overlay marked "pending Edge verification"). Flagged the
+  drift and that the pushes predate any recorded Edge verification.
+- Grayson brought a new idea: system-wide read-selected-text (any app, global hotkey).
+  Assessed feasibility — global-hotkey AHK + SAPI is the right shape (Windows right-click
+  shell menu can't see text selections in arbitrary apps); logged it as `BACKLOG.md` item 8.
+- Grayson took the v1.8/v1.9 Edge check himself; session wrapped before the result came back.
+
+### Earlier session context (superseded sections below preserved as history)
 - Branch: `main` · Files: `BACKLOG.md` (North Star confirmed), new `.gitignore` (excludes
   `.superpowers/`, the brainstorming skill's throwaway mockup workspace) · New: `Backup\`
   (backup tooling, see below)
@@ -125,9 +156,6 @@ for an implementation plan. Alternatives:
 - Brainstormed (not yet built) the word-overlay feature — see "Next concrete step" above for
   the full locked-in design.
 
----
-
-## 🕓 Session log
 ### 2026-08-12 (part 7) — Backup setup, extension-load fix, word-overlay brainstorm
 - Ran `pickup`: confirmed everything through v1.7 clean and in sync with `origin/main`, no
   drift. Grayson asked to set up a project backup.

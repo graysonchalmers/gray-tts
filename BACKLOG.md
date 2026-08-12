@@ -55,6 +55,17 @@ the thread that was already there.
      dependency, but a heavy screen/audio-share permission prompt every time, and may not
      even work depending on how Windows routes SAPI audio to the OS mixer (unverified).
    Needs a scoping pass (probably `brainstorming`) before starting, not straight to code.
+8. **Desktop TTS companion (read selected text outside the browser)** — requested
+   2026-08-12, not scoped/built. Highlight text in *any* Windows app, hit a global
+   hotkey, hear it read aloud. Key insight: `chrome.tts` on Windows already delegates to
+   the OS SAPI voices, so a native tool would use the exact same voices and sound
+   identical to GrayTTS. Likely shape: a small **AutoHotkey script** (~20–30 lines) —
+   global hotkey copies the current selection and speaks it via the SAPI COM voice
+   object; lives in the tray. Note: the Windows right-click shell menu only works on
+   files, not highlighted text in arbitrary apps, so the hotkey route *is* the correct
+   version of the idea. Would live as a sibling `Util-*` project (e.g.
+   `Util-GrayTTS-Desktop`), **not** a folder inside this repo — the extension loader
+   scans every folder under the extension root.
 
 ## Edge verification status
 
