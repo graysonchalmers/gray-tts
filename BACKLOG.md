@@ -38,7 +38,7 @@ the thread that was already there.
    since the popup doesn't persist state across opens).
 5. ~~**A backlog home**~~ — done 2026-08-12: this file.
 
-6. **Word overlay** — built 2026-08-12 (v1.8), pending Edge verification. Bottom-center
+6. ~~**Word overlay**~~ — done 2026-08-12 (v1.8), Edge-verified 2026-08-13. Bottom-center
    Shadow-DOM box showing the current spoken word (RSVP/karaoke-style), independently
    toggleable alongside the existing highlight via two new popup checkboxes. Full spec:
    `docs/superpowers/specs/word-overlay.md`.
@@ -72,11 +72,11 @@ the thread that was already there.
 
 ## Edge verification status
 
-As of 2026-08-12, Grayson confirmed backlog items 1–5 work in a real loaded Edge
-extension, including read-along highlighting (item 3) after trying it directly. Item 6
-(word overlay, v1.8) plus the v1.9 pause-toggle/override fix and v1.10 popup polish
-(button reorder + attribution text, no backlog item — pure UI) are all built and pushed
-but **not yet Edge-verified**; the four outstanding checks are listed in `HANDOFF.md`'s
-Current state section. Item 7 (save-to-audio) is logged but unscoped. Next additions
-should get appended here when a new idea comes up — this file has no reason to go stale
-otherwise.
+As of 2026-08-13, Grayson confirmed backlog items 1–6 all work in a real loaded Edge
+extension: word overlay (v1.8) appears on right-click reads and toggles independently
+of the highlight checkbox, the v1.9 pause/resume state-aware toggle works (including a
+new read overriding a paused utterance), and v1.10's popup polish (button reorder +
+attribution text) reads fine. Item 8 (desktop companion) is done and verified in its
+own sibling project. Only item 7 (save-to-audio) remains — logged but unscoped, needs a
+`brainstorming` pass before any code. Next additions should get appended here when a
+new idea comes up — this file has no reason to go stale otherwise.

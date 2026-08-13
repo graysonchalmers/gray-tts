@@ -22,11 +22,10 @@ handoff update, three more versions shipped:
   entry exists for this commit; unclear whether it was prompted by the v1.8/v1.9 Edge check
   below or a separate unlogged session.
 
-**None of v1.8, v1.9, or v1.10 is recorded as Edge-verified.** The outstanding checks from the
-v1.8/v1.9 work are: (1) overlay appears on right-click read and its checkbox toggles it, (2)
-highlight checkbox toggles independently, (3) Pause becomes Resume, (4) a new read while paused
-actually speaks. Grayson was running this check as the prior session ended; result was never
-reported back.
+**v1.8/v1.9/v1.10 are now Edge-verified (2026-08-13).** Grayson confirmed all four checks pass:
+overlay appears on right-click read and its checkbox toggles it, highlight checkbox toggles
+independently, Pause becomes Resume, and a new read while paused actually speaks. v1.10's origin
+(button reorder + attribution text) is still unconfirmed but is no longer blocking anything.
 
 Older context (still true) — GrayTTS speaks natively via `chrome.tts`. Popup got a full visual
 pass (commit `80d516f`), then three backlog items were built:
@@ -69,21 +68,20 @@ Current version: 1.7 (2026-08-12 05:20, commit `52bd64c`, pushed). Grayson confi
 highlighting all work in a real loaded Edge extension.
 
 ## 📌 Where we stopped
-Grayson went off to **Edge-verify v1.8 (word overlay) + v1.9 (pause toggle/override)** — the
-four checks listed under Current state. Result was never reported back in a session log. A
-v1.10 commit (popup button reorder + attribution text) landed afterward with no accompanying
-log entry, so it's unknown whether that was fallout from the verification pass or unrelated
-work. Ran `pickup` this session, caught this drift, and am now catching `HANDOFF.md` +
-`BACKLOG.md` up to v1.10 per Grayson's request.
+Edge-verification of v1.8/v1.9/v1.10 is done and passed (see above). Backlog items 1–6 and 8
+are all done and verified; only item 7 (save spoken output to an audio file) remains, and it's
+unscoped. North Star reconfirmed as still the right frame — no changes requested.
 
 ## ▶️ Next concrete step
-Get the Edge-check result (v1.8/v1.9's four checks, plus whatever prompted v1.10) from Grayson
-and record it in BACKLOG.md's "Edge verification status" section. If anything failed, that's
-the immediate fix. Alternatives:
-- If verification passed and he wants new work: scope **backlog item 8** (desktop TTS
-  companion — AutoHotkey global hotkey + SAPI, as a sibling `Util-*` project). Small enough to
-  draft the script in one sitting; brainstorm first only if he wants settings/voice-picking.
+Scope **backlog item 7** (save-to-audio) via `brainstorming` — it's not a small add, since
+`chrome.tts` hands speech straight to the OS engine with no access to the raw audio buffer.
+Two real directions to weigh (see `BACKLOG.md` item 7 for detail): an additive/opt-in
+network-based TTS provider used only for the save path, or capturing system audio via
+`getDisplayMedia({audio:true})` while it plays. Alternatives:
+- Revisit the "many voices sound the same" question (low-priority, only if it's bugging him).
 - Close out the still-unverified V: backup first run (see open questions) if V: is reachable.
+- Check whether `Tool-GrayTTS`'s `chrome.tts` now sees the NaturalVoiceSAPIAdapter voices the
+  desktop companion project picked up (flagged as unconfirmed in that project's memory).
 
 ### Word-overlay design (locked 2026-08-12; since built in v1.8 — kept for reference)
 - **Settings:** two independent checkboxes in the popup — "Highlight word on page" and "Show
@@ -113,14 +111,10 @@ the immediate fix. Alternatives:
   both checkboxes independently, plus confirming Preview stays unaffected.
 
 ## ❓ Open questions
-- **Did v1.8/v1.9 pass the Edge check?** Grayson was running it as a prior session ended —
-  still unconfirmed. (Also worth noting: both were pushed before being recorded as verified,
-  which is against the usual push-after-verification discipline unless it happened off the
-  record.)
 - **What prompted v1.10?** (`532bc60` — Pause/Stop button reorder + attribution text.) No
-  session log entry exists for it. Could be fallout from the v1.8/v1.9 Edge check (e.g.
-  Grayson repositioning the buttons himself after using them) or a completely separate
-  unlogged session — ask before assuming either.
+  session log entry exists for it, and it's still unconfirmed whether it was fallout from the
+  v1.8/v1.9 Edge check or a separate unlogged session — low-stakes now that it's verified
+  working either way, but flagging in case it matters later.
 - **V: backup unverified.** `_Backup\` (see below) was written, but V: showed as
   `Unavailable` in `net use` and the UNC path `\\Moby\vault\Projects work` also didn't resolve
   from this session's shell — could be the NAS genuinely being down, or this session's shell
@@ -136,12 +130,24 @@ the immediate fix. Alternatives:
   test harness.
 
 ## 🗂️ Changed this session
-- Branch: `main` · Files: `HANDOFF.md`, `BACKLOG.md` (both caught up to v1.10 reality)
-- No code changes — docs-only catch-up.
+- Branch: `main` · Files: `HANDOFF.md`, `BACKLOG.md` (recorded Edge-verification pass)
+- No code changes — docs-only.
 
 ---
 
 ## 🕓 Session log
+### 2026-08-13 (part 11) — Pickup, Edge verification confirmed, North Star reconfirmed
+- Ran `pickup`: repo clean and level with `origin/main`, `HANDOFF.md` already caught up to
+  v1.10 (part 10's work) — no drift this time.
+- Grayson confirmed all four outstanding Edge checks passed: word overlay (v1.8) appears on
+  right-click and toggles independently of highlight; pause/resume toggle (v1.9) works
+  including a new read overriding a paused utterance; v1.10's popup polish reads fine. Recorded
+  this in `BACKLOG.md`'s Edge verification status and closed out `HANDOFF.md`'s open questions
+  on it. v1.10's origin is still technically unconfirmed but no longer blocking.
+- Asked whether there's a North Star to work from — confirmed the existing one (set
+  2026-08-12, unchanged) is still the right frame; no new backlog items requested. Only open
+  backlog item is #7 (save-to-audio, unscoped, needs `brainstorming`).
+
 ### 2026-08-12/13 (part 10) — Backlog item 8 built as a sibling project
 - Same session as part 9's doc catch-up. Grayson asked to start planning/setup for backlog
   item 8 (desktop TTS companion). Scaffolded `C:\Projects-local\Util-GrayTTS-Desktop` as its
