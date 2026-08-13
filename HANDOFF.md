@@ -1,6 +1,6 @@
 # 🧭 Session Handoff — Tool-GrayTTS (GrayTTS)
 
-_Last updated: 2026-08-12 (later session) CT_
+_Last updated: 2026-08-12/13 (part 10) CT_
 
 ## 🧭 North Star & Backlog
 Moved to [`BACKLOG.md`](BACKLOG.md) — that's now the durable home for the roadmap so it
@@ -8,17 +8,25 @@ survives session-log churn here. Check it before starting new feature work. **No
 now Grayson-confirmed** (was previously just proposed).
 
 ## 🎯 Current state
-Version **1.9** (commit `053f4a8`, pushed, level with `origin/main`). Since the last full
-handoff update, two more versions shipped in an unlogged session (reconstructed from git):
+Version **1.10** (commit `532bc60`, pushed, level with `origin/main`). Since the last full
+handoff update, three more versions shipped:
 - **v1.8** (`6555f3c`) — the **word overlay** got built per the locked design below: bottom-center
   Shadow-DOM box showing the current spoken word, independently toggleable alongside the in-page
   highlight via two new popup checkboxes. Spec landed at `docs/superpowers/specs/word-overlay.md`.
 - **v1.9** (`053f4a8`) — a new read now overrides a paused utterance instead of getting stuck,
   and Pause/Resume merged into one state-aware toggle (superseding the earlier three-button call).
+- **v1.10** (`532bc60`) — unlogged session, reconstructed from git: moved the Pause/Stop button
+  row to the top of the popup (above the language filter, was previously above the hotkey hint),
+  and changed the footer attribution from "Made by ChatGPT and Grayson Chalmers" to "Made by
+  Grayson Chalmers and coding agents." Pure UI polish — no functional change. No session log
+  entry exists for this commit; unclear whether it was prompted by the v1.8/v1.9 Edge check
+  below or a separate unlogged session.
 
-**Neither v1.8 nor v1.9 is recorded as Edge-verified.** Grayson is doing that check now:
-(1) overlay appears on right-click read and its checkbox toggles it, (2) highlight checkbox
-toggles independently, (3) Pause becomes Resume, (4) a new read while paused actually speaks.
+**None of v1.8, v1.9, or v1.10 is recorded as Edge-verified.** The outstanding checks from the
+v1.8/v1.9 work are: (1) overlay appears on right-click read and its checkbox toggles it, (2)
+highlight checkbox toggles independently, (3) Pause becomes Resume, (4) a new read while paused
+actually speaks. Grayson was running this check as the prior session ended; result was never
+reported back.
 
 Older context (still true) — GrayTTS speaks natively via `chrome.tts`. Popup got a full visual
 pass (commit `80d516f`), then three backlog items were built:
@@ -62,12 +70,16 @@ highlighting all work in a real loaded Edge extension.
 
 ## 📌 Where we stopped
 Grayson went off to **Edge-verify v1.8 (word overlay) + v1.9 (pause toggle/override)** — the
-four checks listed under Current state. Result not yet reported. Meanwhile the desktop-TTS
-idea was logged as **backlog item 8** in `BACKLOG.md`.
+four checks listed under Current state. Result was never reported back in a session log. A
+v1.10 commit (popup button reorder + attribution text) landed afterward with no accompanying
+log entry, so it's unknown whether that was fallout from the verification pass or unrelated
+work. Ran `pickup` this session, caught this drift, and am now catching `HANDOFF.md` +
+`BACKLOG.md` up to v1.10 per Grayson's request.
 
 ## ▶️ Next concrete step
-Get the Edge-check result from Grayson and record it (BACKLOG.md "Edge verification status"
-section + this doc). If anything failed, that's the immediate fix. Alternatives:
+Get the Edge-check result (v1.8/v1.9's four checks, plus whatever prompted v1.10) from Grayson
+and record it in BACKLOG.md's "Edge verification status" section. If anything failed, that's
+the immediate fix. Alternatives:
 - If verification passed and he wants new work: scope **backlog item 8** (desktop TTS
   companion — AutoHotkey global hotkey + SAPI, as a sibling `Util-*` project). Small enough to
   draft the script in one sitting; brainstorm first only if he wants settings/voice-picking.
@@ -101,10 +113,14 @@ section + this doc). If anything failed, that's the immediate fix. Alternatives:
   both checkboxes independently, plus confirming Preview stays unaffected.
 
 ## ❓ Open questions
-- **Did v1.8/v1.9 pass the Edge check?** Grayson was running it as this session ended —
-  first thing to confirm next session. (Also worth noting: both were pushed before being
-  recorded as verified, which is against the usual push-after-verification discipline unless
-  it happened off the record.)
+- **Did v1.8/v1.9 pass the Edge check?** Grayson was running it as a prior session ended —
+  still unconfirmed. (Also worth noting: both were pushed before being recorded as verified,
+  which is against the usual push-after-verification discipline unless it happened off the
+  record.)
+- **What prompted v1.10?** (`532bc60` — Pause/Stop button reorder + attribution text.) No
+  session log entry exists for it. Could be fallout from the v1.8/v1.9 Edge check (e.g.
+  Grayson repositioning the buttons himself after using them) or a completely separate
+  unlogged session — ask before assuming either.
 - **V: backup unverified.** `_Backup\` (see below) was written, but V: showed as
   `Unavailable` in `net use` and the UNC path `\\Moby\vault\Projects work` also didn't resolve
   from this session's shell — could be the NAS genuinely being down, or this session's shell
@@ -120,16 +136,37 @@ section + this doc). If anything failed, that's the immediate fix. Alternatives:
   test harness.
 
 ## 🗂️ Changed this session
-- Branch: `main` · Files: `BACKLOG.md` (new item 8), `HANDOFF.md` (caught up to v1.9 reality)
-- **Decision:** the "read selected text outside the browser" idea lands as a **separate
-  sibling `Util-*` project**, not inside this repo — the extension loader scans every folder
-  under the extension root (same class of problem as the `_Backup` rename). Recommended shape:
-  AutoHotkey global hotkey → copy selection → speak via SAPI COM; identical voices to
-  `chrome.tts` since both use the OS SAPI engine. Full note in `BACKLOG.md` item 8.
+- Branch: `main` · Files: `HANDOFF.md`, `BACKLOG.md` (both caught up to v1.10 reality)
+- No code changes — docs-only catch-up.
 
 ---
 
 ## 🕓 Session log
+### 2026-08-12/13 (part 10) — Backlog item 8 built as a sibling project
+- Same session as part 9's doc catch-up. Grayson asked to start planning/setup for backlog
+  item 8 (desktop TTS companion). Scaffolded `C:\Projects-local\Util-GrayTTS-Desktop` as its
+  own git repo and built it end-to-end via `brainstorming` → spec → `writing-plans` →
+  `subagent-driven-development` (9 tasks) → whole-branch review → merge to that project's own
+  `main`. Grayson confirmed it works for real. Full detail lives in that project's own
+  `HANDOFF.md` — not duplicated here. Marked item 8 done in `BACKLOG.md`.
+- No changes to this repo's own code this session — docs-only (this entry + part 9's catch-up).
+- Edge-verification status for v1.8/v1.9/v1.10 is still open from part 9 — unrelated to the
+  desktop companion work, still the right next thing to confirm whenever Grayson returns to
+  this project specifically.
+
+### 2026-08-12 (part 9) — Pickup, caught HANDOFF/BACKLOG up to v1.10
+- Ran `pickup`: repo clean and level with `origin/main`, but found a commit (`532bc60`, v1.10 —
+  moved the popup's Pause/Stop row to the top, changed the footer attribution text) that
+  post-dated the last logged session (part 8, `1996b29`) with no session-log entry of its own.
+  Flagged the drift and that it's unclear whether v1.10 was fallout from the still-unconfirmed
+  v1.8/v1.9 Edge check or a separate unlogged session.
+- Grayson asked to catch the handoff docs up to v1.10 now rather than wait on the verification
+  answer. Updated `HANDOFF.md`'s Current state / Where we stopped / Next step / Open questions
+  to include v1.10 and the new open question about its origin; updated `BACKLOG.md`'s Edge
+  verification status section to note v1.10 shipped too, also unverified.
+- Edge-verification status for v1.8/v1.9/v1.10 is still open — first thing to confirm next
+  session.
+
 ### 2026-08-12 (part 8) — Pickup, backlog item 8, handoff catch-up
 - Ran `pickup`: found HANDOFF.md a session behind git — v1.8 (word overlay, `6555f3c`) and
   v1.9 (pause toggle/override fix, `053f4a8`) were built and pushed in an unlogged session;

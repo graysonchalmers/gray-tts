@@ -55,8 +55,11 @@ the thread that was already there.
      dependency, but a heavy screen/audio-share permission prompt every time, and may not
      even work depending on how Windows routes SAPI audio to the OS mixer (unverified).
    Needs a scoping pass (probably `brainstorming`) before starting, not straight to code.
-8. **Desktop TTS companion (read selected text outside the browser)** — requested
-   2026-08-12, not scoped/built. Highlight text in *any* Windows app, hit a global
+8. ~~**Desktop TTS companion (read selected text outside the browser)**~~ — done
+   2026-08-13, as a sibling project: `C:\Projects-local\Util-GrayTTS-Desktop`, merged to its
+   own `main`. See that project's `HANDOFF.md` for full detail; next up there is expanding
+   past the 2 default Windows SAPI voices currently installed. Original scoping note below,
+   kept for context. Highlight text in *any* Windows app, hit a global
    hotkey, hear it read aloud. Key insight: `chrome.tts` on Windows already delegates to
    the OS SAPI voices, so a native tool would use the exact same voices and sound
    identical to GrayTTS. Likely shape: a small **AutoHotkey script** (~20–30 lines) —
@@ -71,6 +74,9 @@ the thread that was already there.
 
 As of 2026-08-12, Grayson confirmed backlog items 1–5 work in a real loaded Edge
 extension, including read-along highlighting (item 3) after trying it directly. Item 6
-(word overlay) is built and needs Edge verification next. Item 7 (save-to-audio) is
-logged but unscoped. Next additions should get appended here when a new idea comes up —
-this file has no reason to go stale otherwise.
+(word overlay, v1.8) plus the v1.9 pause-toggle/override fix and v1.10 popup polish
+(button reorder + attribution text, no backlog item — pure UI) are all built and pushed
+but **not yet Edge-verified**; the four outstanding checks are listed in `HANDOFF.md`'s
+Current state section. Item 7 (save-to-audio) is logged but unscoped. Next additions
+should get appended here when a new idea comes up — this file has no reason to go stale
+otherwise.
