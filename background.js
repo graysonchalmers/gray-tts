@@ -7,9 +7,9 @@ let ttsSettings = {};  // Store the TTS settings
 // time. A second save-clip trigger while this isn't 'idle' is ignored (see
 // startClipCapture) rather than racing two offscreen captures against each other.
 // 'finishing' covers the gap between telling the offscreen document to stop/abort and it
-// actually confirming that back (capture_finished/capture_aborted) — without this state,
-// a save-clip trigger during that gap could race a second offscreen document into
-// existence before the first one's teardown message arrives.
+// actually confirming that back (capture_finished/capture_empty/capture_aborted) —
+// without this state, a save-clip trigger during that gap could race a second offscreen
+// document into existence before the first one's teardown message arrives.
 let clipCaptureState = 'idle'; // 'idle' | 'awaiting_capture' | 'capturing' | 'finishing'
 let clipCaptureText = null;
 let clipCaptureTabId = null;
@@ -46,8 +46,20 @@ async function startClipCapture(text, tabId) {
     clipCaptureState = 'awaiting_capture';
     clipCaptureText = text;
     clipCaptureTabId = tabId;
-    await ensureOffscreenDocument();
-    chrome.runtime.sendMessage({message: 'start_capture'});
+    try {
+        await ensureOffscreenDocument();
+        chrome.runtime.sendMessage({message: 'start_capture'});
+    } catch (err) {
+        // ensureOffscreenDocument()/createDocument() rejecting is rare, but the
+        // context-menu click handler below calls startClipCapture() without awaiting or
+        // catching it — an uncaught rejection here would wedge clipCaptureState at
+        // 'awaiting_capture' forever (every later save-clip click would hit the guard
+        // above with no way out, since this failure never reaches the 'idle' state the
+        // self-healing in ensureOffscreenDocument() depends on).
+        console.error('GrayTTS clip capture failed to start:', err);
+        showErrorBadge('Clip capture failed to start');
+        resetClipCaptureState();
+    }
 }
 
 function resetClipCaptureState() {
@@ -124,6 +136,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             chrome.offscreen.closeDocument();
         });
         resetClipCaptureState();
+    } else if (request.message === 'capture_empty') {
+        if (clipCaptureState !== 'finishing') { chrome.offscreen.closeDocument(); return; }
+        resetClipCaptureState();
+        chrome.offscreen.closeDocument();
+        showErrorBadge('Clip too short to save — nothing was recorded');
     } else if (request.message === 'capture_aborted') {
         chrome.offscreen.closeDocument();
         resetClipCaptureState();
