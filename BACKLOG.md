@@ -42,19 +42,20 @@ the thread that was already there.
    Shadow-DOM box showing the current spoken word (RSVP/karaoke-style), independently
    toggleable alongside the existing highlight via two new popup checkboxes. Full spec:
    `docs/superpowers/specs/word-overlay.md`.
-7. **Save spoken output to an audio file** — requested 2026-08-12, not scoped/built.
-   **Not a small add** — `chrome.tts` (chosen specifically to kill the CSP/ResponsiveVoice
-   problems this project fought earlier) hands speech to the OS TTS engine directly and
-   gives the extension no access to the audio bytes, so there's no "grab the buffer, save
-   it" path today. Two real options, both real design decisions:
-   - Add a second, optional network-based TTS provider (Google/Azure/Amazon/ElevenLabs-
-     style) used only for the "save to file" path — reintroduces the exact CSP/API-key
-     dependency the `chrome.tts` migration removed, so it'd need to be additive/opt-in,
-     not a replacement.
-   - Capture system audio via `getDisplayMedia({audio: true})` while it plays — no new
-     dependency, but a heavy screen/audio-share permission prompt every time, and may not
-     even work depending on how Windows routes SAPI audio to the OS mixer (unverified).
-   Needs a scoping pass (probably `brainstorming`) before starting, not straight to code.
+7. **Save spoken output to an audio file** — scoped 2026-08-13 via `brainstorming`, ready
+   for planning. **Direction: system audio capture**, not a network TTS provider. A
+   feasibility spike confirmed `getDisplayMedia({audio:true})` with "Entire Screen + share
+   system audio" does capture Windows SAPI voice audio (what `chrome.tts` plays through).
+   Architecture: a new "Save as audio clip" context-menu item, using a `chrome.offscreen`
+   document (reason `DISPLAY_MEDIA`) to host the capture since `background.js`'s MV3
+   service worker has no document context of its own; auto-downloads a `.webm` file via
+   `chrome.downloads` when `chrome.tts` finishes speaking. Full design:
+   [`docs/superpowers/specs/save-audio-clip.md`](docs/superpowers/specs/save-audio-clip.md).
+   **Known hard constraint:** Chrome's screen-share picker can't be bypassed or
+   remembered — every clip save requires clicking through it, even fully automated.
+   A second, optional network-based TTS provider (nicer voice) was explicitly discussed
+   and **deferred** — not part of this scope, would need its own design pass later.
+   Next step: `writing-plans` to turn the spec into an implementation plan.
 8. ~~**Desktop TTS companion (read selected text outside the browser)**~~ — done
    2026-08-13, as a sibling project: `C:\Projects-local\Util-GrayTTS-Desktop`, merged to its
    own `main`. See that project's `HANDOFF.md` for full detail; next up there is expanding
@@ -69,6 +70,12 @@ the thread that was already there.
    version of the idea. Would live as a sibling `Util-*` project (e.g.
    `Util-GrayTTS-Desktop`), **not** a folder inside this repo — the extension loader
    scans every folder under the extension root.
+9. **Clickable word overlay as a pause/play toggle** — raised 2026-08-13 during the item 7
+   brainstorm, not scoped. Idea: clicking the word-overlay box (built in v1.8) would freeze
+   the current word, highlight it red, and pause speech; clicking again resumes. Would
+   need its own design pass — e.g. how it interacts with the existing Pause/Resume popup
+   toggle from v1.9, and whether the overlay needs to become a real clickable element
+   (currently `pointer-events: none` by design, see the word-overlay spec).
 
 ## Edge verification status
 
@@ -77,6 +84,8 @@ extension: word overlay (v1.8) appears on right-click reads and toggles independ
 of the highlight checkbox, the v1.9 pause/resume state-aware toggle works (including a
 new read overriding a paused utterance), and v1.10's popup polish (button reorder +
 attribution text) reads fine. Item 8 (desktop companion) is done and verified in its
-own sibling project. Only item 7 (save-to-audio) remains — logged but unscoped, needs a
-`brainstorming` pass before any code. Next additions should get appended here when a
-new idea comes up — this file has no reason to go stale otherwise.
+own sibling project. Item 7 (save-to-audio) is now scoped (spec at
+`docs/superpowers/specs/save-audio-clip.md`) and ready for `writing-plans`, not yet built
+or Edge-verified. Item 9 (clickable overlay pause/play) is a new, unscoped idea. Next
+additions should get appended here when a new idea comes up — this file has no reason to
+go stale otherwise.
