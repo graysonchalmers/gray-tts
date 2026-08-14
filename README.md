@@ -2,7 +2,7 @@
 Simple Chrome TTS extension
 
 ## Version
-1.12 (2026-08-14 02:20)
+1.13 (2026-08-14 03:07)
 
 Chrome's manifest `version` field only accepts dot-separated integers, so it can't hold a
 timestamp. The human-readable build stamp lives in `manifest.json`'s `version_name` field
@@ -11,6 +11,15 @@ the manifest so it can never go stale on its own. Bump both together on every me
 change: `version` gets a normal bump, `version_name` becomes `"<version> (<local date> <local time>)"`.
 
 ## Change Notes
+- 2026-08-14: **"Save as audio clip" moved from the right-click context menu to a popup
+  button.** Right-click now shows a single "Read with GrayTTS" item — no submenu, since
+  Chrome/Edge only nests an extension's items into a flyout when there are 2 or more
+  top-level ones. The popup gained a "🎙 Save as audio clip" button (below the Pause/Stop
+  row) that grabs the active tab's current text selection the same way the hotkey already
+  does, then runs through the exact same capture flow as before. Selecting nothing before
+  clicking it shows an inline error in the popup; every other failure (capture already in
+  progress, picker cancelled, etc.) still uses the existing toolbar badge. Full design:
+  `docs/superpowers/specs/relocate-save-clip-to-popup.md`.
 - 2026-08-14: The bottom-center word overlay (v1.8) is now **clickable** — clicking it
   pauses speech (the word turns red and freezes on the last word shown), clicking again
   resumes. Fully in sync with the popup's existing Pause/Resume button in both directions:
