@@ -4,9 +4,11 @@
   "version": "1.10",
   "version_name": "1.9 (2026-08-12)",
   "permissions": [
-    "tts", 
+    "tts",
     "contextMenus",
-    "storage"
+    "storage",
+    "offscreen",
+    "downloads"
   ],
   "background": {
     "service_worker": "background.js"
