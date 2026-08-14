@@ -570,13 +570,16 @@ function resetClipCaptureState() {
 `chrome.storage.session` the way `speechState` is. If the MV3 service worker respawns
 *during* the one specific capture attempt whose `getDisplayMedia` picker is still open
 (possible if the user takes >~30s idle to respond to it), that one attempt silently
-produces no clip and no error badge — `ensureOffscreenDocument()`'s self-healing above
-means the *next* "Save as audio clip" click still works normally, so this doesn't leave
-the extension stuck, but the interrupted attempt itself is a real (rare, narrow-window)
-exception to "never silently fail." Full correctness would mean persisting and
-rehydrating this state the way `speechState` is, which is a larger change than this
+produces no clip and no error badge — the interrupted attempt itself is a real (rare,
+narrow-window) exception to "never silently fail." Full correctness would mean persisting
+and rehydrating this state the way `speechState` is, which is a larger change than this
 feature's scope justifies right now — flagged here rather than silently accepted with no
-record.
+record. **Updated after the final whole-branch review:** the `capture_ready` handler
+(Step 5) now closes the offscreen document immediately if it arrives in the wrong state,
+rather than only relying on `ensureOffscreenDocument()`'s self-heal on the *next* attempt
+— the earlier draft of this note said the screen stays actively captured until that next
+attempt, which the review caught as an understatement of the real consequence; that gap
+is now closed as soon as the picker resolves, not deferred.
 
 - [ ] **Step 5: Handle the offscreen document's reply messages**
 
@@ -588,7 +591,7 @@ In the existing `chrome.runtime.onMessage.addListener` in `background.js`, add t
 
 ```js
     } else if (request.message === 'capture_ready') {
-        if (clipCaptureState !== 'awaiting_capture') return;
+        if (clipCaptureState !== 'awaiting_capture') { chrome.offscreen.closeDocument(); return; }
         clipCaptureState = 'capturing';
         speak(clipCaptureText, clipCaptureTabId, true);
     } else if (request.message === 'capture_cancelled' || request.message === 'capture_no_audio') {
@@ -615,6 +618,19 @@ In the existing `chrome.runtime.onMessage.addListener` in `background.js`, add t
         chrome.offscreen.closeDocument();
         showErrorBadge('Clip too short to save — nothing was recorded');
     } else if (request.message === 'capture_aborted') {
+        if (clipCaptureState === 'capturing') {
+            // The MediaRecorder stopped on its own — most likely the user clicked "Stop
+            // sharing" on the browser's own screen-share indicator bar mid-capture,
+            // ending things outside our own stop_capture/abort_capture flow entirely.
+            // chrome.tts may still be speaking. Badge it — an explicit abort_capture we
+            // sent ourselves (state already 'finishing' by the time this arrives, see
+            // speak()) is handled by the branch below with no new badge, since
+            // speak()'s own error handling already explained that one.
+            chrome.offscreen.closeDocument();
+            resetClipCaptureState();
+            showErrorBadge('Clip capture stopped — screen sharing ended');
+            return;
+        }
         chrome.offscreen.closeDocument();
         resetClipCaptureState();
 ```
@@ -652,7 +668,7 @@ becomes:
                     showErrorBadge(event.errorMessage);
                     setSpeechState('idle');
                     if (tabId !== undefined) sendClearHighlight(tabId);
-                    if (isClip) {
+                    if (isClip && clipCaptureState === 'capturing') {
                         chrome.runtime.sendMessage({message: 'abort_capture'});
                         clipCaptureState = 'finishing';
                     }
@@ -673,12 +689,23 @@ becomes:
                 } else if (event.type === 'end' || event.type === 'interrupted' || event.type === 'cancelled') {
                     setSpeechState('idle');
                     if (tabId !== undefined) sendClearHighlight(tabId);
-                    if (isClip) {
+                    if (isClip && clipCaptureState === 'capturing') {
                         chrome.runtime.sendMessage({message: 'stop_capture'});
                         clipCaptureState = 'finishing';
                     }
                 }
 ```
+
+Both guards above (`isClip && clipCaptureState === 'capturing'`) fix a real bug found in the
+final whole-branch review: previously this ran unconditionally off the `isClip` closure
+alone, with no check that the state machine was still where this transition expected it
+to be. If the user clicks "Stop sharing" on the browser's own screen-share indicator mid-
+capture, the offscreen document's `MediaRecorder` stops on its own (see the new
+`capture_aborted` handling above), resetting `clipCaptureState` to `'idle'` before
+`chrome.tts` finishes speaking. Without this guard, `speak()`'s `'end'` event later fires
+and unconditionally jumps state straight from `'idle'` to `'finishing'` — parking it there
+forever, since nothing is left that could ever send the `capture_finished`/`capture_empty`
+message needed to leave `'finishing'` again.
 
 Note: neither branch calls `resetClipCaptureState()` directly — that only happens once
 `capture_finished`/`capture_empty`/`capture_aborted`/`capture_cancelled`/`capture_no_audio`
@@ -759,7 +786,15 @@ extension in Edge (`edge://extensions` → reload), then run through all 8 check
 
 1. **Golden path** — select text, right-click → Save as audio clip → Entire Screen + audio
    → speech plays → a `.webm` file lands in Downloads → play it back, confirm it matches
-   the selected text.
+   the selected text. **If this instead produces "Clip too short to save" or a silent
+   `.webm` on a normal-length selection:** the final whole-branch review flagged
+   `offscreen.js`'s `displayStream.getVideoTracks().forEach((t) => t.stop())` line (stops
+   the video track immediately since only audio is needed) as the one line in the capture
+   path that wasn't present in the original feasibility spike — whether stopping the video
+   track can terminate the underlying capture session (taking the audio track with it) is
+   uncertain without a real browser. If check 1 fails this way, delete that one line first
+   (`releaseStream()` stops all tracks anyway at the end, so keeping video alive briefly
+   costs nothing) and retry before digging further.
 2. **Cancel path** — trigger it, cancel/deny the picker → confirm no speech happens, the
    "Clip capture cancelled" badge shows, nothing downloads.
 3. **Wrong picker choice** — pick a specific window, or leave the audio checkbox unchecked
@@ -839,3 +874,25 @@ re-verify — don't mark backlog item 7 done in `BACKLOG.md` until all 8 pass.
   self-healing fix above entirely (that only triggers once state reaches `'idle'`). Wrapped
   the `ensureOffscreenDocument()` + `sendMessage` calls in try/catch, resetting state and
   badging on failure.
+- **Fourth correction (made during the final whole-branch review, after all 4 tasks were
+  individually complete):** the per-task reviews all checked out because the message
+  contract between `offscreen.js` and `background.js` matched name-for-name in both
+  directions — what only a whole-branch pass surfaced was two places where a *handler's
+  guard* or a *state precondition* was missing, both centered on the same real scenario:
+  the user clicking "Stop sharing" on the browser's own screen-share indicator bar
+  mid-capture (ending the `MediaRecorder` outside this feature's own `stop_capture`/
+  `abort_capture` flow entirely, since `chrome.tts` keeps speaking independently of the
+  screen-share permission). (1) `capture_ready`'s guard didn't close the offscreen
+  document on a mismatched state, unlike its four siblings — fixed to match. (2)
+  `capture_aborted` had no guard at all, so this scenario reset state to `'idle'` with no
+  badge while speech kept playing — fixed to badge it ("Clip capture stopped — screen
+  sharing ended") specifically when it arrives during `'capturing'`. (3) `speak()`'s error
+  and end-family branches set `clipCaptureState = 'finishing'` unconditionally off the
+  `isClip` closure alone, with no check that the state machine hadn't already moved on —
+  once (2) reset state to `'idle'` mid-speech, the eventual `'end'` event would jump
+  straight from `'idle'` to `'finishing'` and wedge there forever. Both transitions are now
+  guarded with `clipCaptureState === 'capturing'`. Deferred as Minor, not fixed:
+  unbounded filename length for a pathological single "word" (`lib/clipFilename.js`), a
+  mixed-script/non-Latin selection partially mangling into a truncated slug instead of
+  cleanly falling back to timestamp-only, and stopping a clip mid-read downloading a
+  partial file rather than discarding it (defensible as-is — not silent, just partial).
