@@ -2,6 +2,14 @@ importScripts('lib/settings.js', 'lib/clipFilename.js');
 
 let extensionEnabled = true;  // Keep track of whether the extension is enabled
 let ttsSettings = {};  // Store the TTS settings
+// The tabId of whatever speak() call is currently active, or undefined if nothing is
+// speaking/paused, or if the active speech has no source tab (Preview). Lets the top-level
+// pause/resume message handlers below (already triggered by the popup's button) relay a
+// speech_paused/speech_resumed message to the right tab for the clickable overlay — set
+// here rather than read from chrome.tts's own event data, since pause/resume aren't
+// reliably fired by every voice/engine (see setSpeechState's existing comment on the same
+// gap for 'word' events).
+let currentSpeakingTabId = undefined;
 
 // State for the in-progress "Save as audio clip" flow, if any. 'idle' the rest of the
 // time. A second save-clip trigger while this isn't 'idle' is ignored (see
@@ -107,9 +115,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         // popup only ever sends this when it already knows we're 'speaking' (see popup.js),
         // so this is always a valid transition.
         setSpeechState('paused');
+        if (currentSpeakingTabId !== undefined) {
+            chrome.tabs.sendMessage(currentSpeakingTabId, {message: 'speech_paused'}, () => {
+                if (chrome.runtime.lastError) { /* tab navigated away — ignore */ }
+            });
+        }
     } else if (request.message === 'resume') {
         chrome.tts.resume();
         setSpeechState('speaking');
+        if (currentSpeakingTabId !== undefined) {
+            chrome.tabs.sendMessage(currentSpeakingTabId, {message: 'speech_resumed'}, () => {
+                if (chrome.runtime.lastError) { /* tab navigated away — ignore */ }
+            });
+        }
     } else if (request.message === 'stop') {
         chrome.tts.stop();
         clearBadge();
@@ -177,6 +195,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 // doesn't highlight anything.
 function speak(text, tabId, isClip) {
     if (!text) return;
+    currentSpeakingTabId = tabId;
     // A new read must always win, even over a *paused* utterance — chrome.tts.speak() is
     // documented to auto-interrupt any in-progress speech, but empirically a paused
     // utterance doesn't reliably get interrupted that way (observed: the new speak() call
@@ -203,6 +222,7 @@ function speak(text, tabId, isClip) {
                     console.error('chrome.tts error:', event.errorMessage);
                     showErrorBadge(event.errorMessage);
                     setSpeechState('idle');
+                    currentSpeakingTabId = undefined;
                     if (tabId !== undefined) sendClearHighlight(tabId);
                     if (isClip && clipCaptureState === 'capturing') {
                         chrome.runtime.sendMessage({message: 'abort_capture'});
@@ -225,6 +245,7 @@ function speak(text, tabId, isClip) {
                     }, () => { if (chrome.runtime.lastError) { /* tab navigated away mid-speech — ignore */ } });
                 } else if (event.type === 'end' || event.type === 'interrupted' || event.type === 'cancelled') {
                     setSpeechState('idle');
+                    currentSpeakingTabId = undefined;
                     if (tabId !== undefined) sendClearHighlight(tabId);
                     if (isClip && clipCaptureState === 'capturing') {
                         chrome.runtime.sendMessage({message: 'stop_capture'});
