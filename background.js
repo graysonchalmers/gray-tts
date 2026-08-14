@@ -132,6 +132,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 if (chrome.runtime.lastError) { /* tab navigated away — ignore */ }
             });
         }
+    } else if (request.message === 'save_clip_from_popup') {
+        getActiveTabSelectionText((text, tabId) => {
+            if (!text) { sendResponse({error: 'No text selected on the page'}); return; }
+            startClipCapture(text, tabId);
+            sendResponse({ok: true});
+        });
+        return true; // keep the message channel open for the async response above
     } else if (request.message === 'stop') {
         chrome.tts.stop();
         clearBadge();

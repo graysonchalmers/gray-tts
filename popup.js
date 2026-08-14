@@ -108,6 +108,28 @@ document.addEventListener('DOMContentLoaded', () => {
         chrome.runtime.sendMessage({message: 'stop'});
     });
 
+    const saveClipButton = document.getElementById('saveClip');
+    const saveClipError = document.getElementById('saveClipError');
+
+    function showSaveClipError(message) {
+        if (!saveClipError) return;
+        saveClipError.textContent = `⚠ ${message}`;
+        saveClipError.style.display = 'block';
+    }
+
+    function clearSaveClipError() {
+        if (!saveClipError) return;
+        saveClipError.style.display = 'none';
+    }
+
+    saveClipButton.addEventListener('click', () => {
+        clearSaveClipError();
+        chrome.runtime.sendMessage({message: 'save_clip_from_popup'}, (response) => {
+            if (chrome.runtime.lastError) return; // popup already closed — nothing to show
+            if (response && response.error) showSaveClipError(response.error);
+        });
+    });
+
     langFilterSelect.addEventListener('change', () => {
         populateVoiceDropdown(langFilterSelect.value);
         applyBucketToControls(GrayTTSSettings.getBucket(perLang, langFilterSelect.value));
