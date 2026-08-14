@@ -1,7 +1,72 @@
-importScripts('lib/settings.js');
+importScripts('lib/settings.js', 'lib/clipFilename.js');
 
 let extensionEnabled = true;  // Keep track of whether the extension is enabled
 let ttsSettings = {};  // Store the TTS settings
+
+// State for the in-progress "Save as audio clip" flow, if any. 'idle' the rest of the
+// time. A second save-clip trigger while this isn't 'idle' is ignored (see
+// startClipCapture) rather than racing two offscreen captures against each other.
+// 'finishing' covers the gap between telling the offscreen document to stop/abort and it
+// actually confirming that back (capture_finished/capture_empty/capture_aborted) —
+// without this state, a save-clip trigger during that gap could race a second offscreen
+// document into existence before the first one's teardown message arrives.
+let clipCaptureState = 'idle'; // 'idle' | 'awaiting_capture' | 'capturing' | 'finishing'
+let clipCaptureText = null;
+let clipCaptureTabId = null;
+
+const OFFSCREEN_DOCUMENT_PATH = 'offscreen.html';
+
+async function ensureOffscreenDocument() {
+    // startClipCapture()'s own guard only calls this when clipCaptureState is 'idle'. Given
+    // that background.js closes the offscreen document in every terminal branch (Step 5)
+    // before ever returning to 'idle', an existing document at this point can only be a
+    // stale leftover — most likely the MV3 service worker was torn down and respawned
+    // (resetting this file's in-memory clipCaptureState back to 'idle') while the previous
+    // capture's getDisplayMedia picker was still open, orphaning that document. There's no
+    // way to tell a stale document apart from a legitimately-still-open one here, so always
+    // close and recreate rather than reusing it — self-heals a stuck capture on the very
+    // next attempt instead of leaving the extension unable to ever open a new one (Chrome
+    // allows only one offscreen document at a time).
+    if (await chrome.offscreen.hasDocument()) {
+        await chrome.offscreen.closeDocument();
+    }
+    await chrome.offscreen.createDocument({
+        url: OFFSCREEN_DOCUMENT_PATH,
+        reasons: ['DISPLAY_MEDIA'],
+        justification: 'Record system audio while chrome.tts speaks, to save the current selection as a downloadable audio clip.'
+    });
+}
+
+async function startClipCapture(text, tabId) {
+    if (!text) return;
+    if (clipCaptureState !== 'idle') {
+        showErrorBadge('Clip capture already in progress');
+        return;
+    }
+    clipCaptureState = 'awaiting_capture';
+    clipCaptureText = text;
+    clipCaptureTabId = tabId;
+    try {
+        await ensureOffscreenDocument();
+        chrome.runtime.sendMessage({message: 'start_capture'});
+    } catch (err) {
+        // ensureOffscreenDocument()/createDocument() rejecting is rare, but the
+        // context-menu click handler below calls startClipCapture() without awaiting or
+        // catching it — an uncaught rejection here would wedge clipCaptureState at
+        // 'awaiting_capture' forever (every later save-clip click would hit the guard
+        // above with no way out, since this failure never reaches the 'idle' state the
+        // self-healing in ensureOffscreenDocument() depends on).
+        console.error('GrayTTS clip capture failed to start:', err);
+        showErrorBadge('Clip capture failed to start');
+        resetClipCaptureState();
+    }
+}
+
+function resetClipCaptureState() {
+    clipCaptureState = 'idle';
+    clipCaptureText = null;
+    clipCaptureTabId = null;
+}
 
 chrome.runtime.onInstalled.addListener(() => {
     createContextMenu();
@@ -14,7 +79,10 @@ chrome.runtime.onInstalled.addListener(() => {
 });
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
-    if (extensionEnabled) {
+    if (!extensionEnabled) return;
+    if (info.menuItemId === 'save-clip') {
+        startClipCapture(info.selectionText, tab && tab.id);
+    } else {
         speak(info.selectionText, tab && tab.id);
     }
 });
@@ -46,6 +114,49 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         chrome.tts.stop();
         clearBadge();
         setSpeechState('idle');
+    } else if (request.message === 'capture_ready') {
+        if (clipCaptureState !== 'awaiting_capture') { chrome.offscreen.closeDocument(); return; }
+        clipCaptureState = 'capturing';
+        speak(clipCaptureText, clipCaptureTabId, true);
+    } else if (request.message === 'capture_cancelled' || request.message === 'capture_no_audio') {
+        if (clipCaptureState !== 'awaiting_capture') { chrome.offscreen.closeDocument(); return; }
+        resetClipCaptureState();
+        chrome.offscreen.closeDocument();
+        showErrorBadge(request.message === 'capture_no_audio'
+            ? "No audio in capture — pick Entire Screen + check 'share audio'"
+            : 'Clip capture cancelled');
+    } else if (request.message === 'capture_finished') {
+        if (clipCaptureState !== 'finishing') { chrome.offscreen.closeDocument(); return; }
+        const filename = GrayTTSClipFilename.buildClipFilename(clipCaptureText, new Date());
+        chrome.downloads.download({url: request.dataUrl, filename, saveAs: false}, () => {
+            if (chrome.runtime.lastError) {
+                console.error('GrayTTS clip download failed:', chrome.runtime.lastError.message);
+                showErrorBadge('Clip download failed');
+            }
+            chrome.offscreen.closeDocument();
+        });
+        resetClipCaptureState();
+    } else if (request.message === 'capture_empty') {
+        if (clipCaptureState !== 'finishing') { chrome.offscreen.closeDocument(); return; }
+        resetClipCaptureState();
+        chrome.offscreen.closeDocument();
+        showErrorBadge('Clip too short to save — nothing was recorded');
+    } else if (request.message === 'capture_aborted') {
+        if (clipCaptureState === 'capturing') {
+            // The MediaRecorder stopped on its own — most likely the user clicked "Stop
+            // sharing" on the browser's own screen-share indicator bar mid-capture,
+            // ending things outside our own stop_capture/abort_capture flow entirely.
+            // chrome.tts may still be speaking. Badge it — an explicit abort_capture we
+            // sent ourselves (state already 'finishing' by the time this arrives, see
+            // speak()) is handled by the branch below with no new badge, since
+            // speak()'s own error handling already explained that one.
+            chrome.offscreen.closeDocument();
+            resetClipCaptureState();
+            showErrorBadge('Clip capture stopped — screen sharing ended');
+            return;
+        }
+        chrome.offscreen.closeDocument();
+        resetClipCaptureState();
     } else if (request.selection) {
         speak(request.selection);
     }
@@ -64,7 +175,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 // read-along highlighting (see content.js) back to that page as speech progresses. Preview
 // (spoken from the popup) has no source page, so it's called without a tabId and simply
 // doesn't highlight anything.
-function speak(text, tabId) {
+function speak(text, tabId, isClip) {
     if (!text) return;
     // A new read must always win, even over a *paused* utterance — chrome.tts.speak() is
     // documented to auto-interrupt any in-progress speech, but empirically a paused
@@ -93,6 +204,10 @@ function speak(text, tabId) {
                     showErrorBadge(event.errorMessage);
                     setSpeechState('idle');
                     if (tabId !== undefined) sendClearHighlight(tabId);
+                    if (isClip && clipCaptureState === 'capturing') {
+                        chrome.runtime.sendMessage({message: 'abort_capture'});
+                        clipCaptureState = 'finishing';
+                    }
                 } else if (event.type === 'start') {
                     clearBadge();
                     setSpeechState('speaking');
@@ -111,6 +226,10 @@ function speak(text, tabId) {
                 } else if (event.type === 'end' || event.type === 'interrupted' || event.type === 'cancelled') {
                     setSpeechState('idle');
                     if (tabId !== undefined) sendClearHighlight(tabId);
+                    if (isClip && clipCaptureState === 'capturing') {
+                        chrome.runtime.sendMessage({message: 'stop_capture'});
+                        clipCaptureState = 'finishing';
+                    }
                 }
             }
         });
@@ -154,6 +273,11 @@ function createContextMenu() {
         id: 'read',
         title: 'Read with GrayTTS',
         contexts: ['selection']  // Only show the option when text is selected
+    });
+    chrome.contextMenus.create({
+        id: 'save-clip',
+        title: 'Save as audio clip',
+        contexts: ['selection']
     });
 }
 

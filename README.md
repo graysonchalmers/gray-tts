@@ -2,7 +2,7 @@
 Simple Chrome TTS extension
 
 ## Version
-1.7 (2026-08-12 05:20)
+1.11 (2026-08-13 16:40)
 
 Chrome's manifest `version` field only accepts dot-separated integers, so it can't hold a
 timestamp. The human-readable build stamp lives in `manifest.json`'s `version_name` field
@@ -11,6 +11,7 @@ the manifest so it can never go stale on its own. Bump both together on every me
 change: `version` gets a normal bump, `version_name` becomes `"<version> (<local date> <local time>)"`.
 
 ## Change Notes
+- 2026-08-13: Added **"Save as audio clip"** — a new right-click context-menu item next to "Read with GrayTTS" that records the spoken selection as a downloaded `.webm` file. Since `chrome.tts` hands speech straight to the OS TTS engine with no access to the raw audio buffer, this works by capturing system audio via `getDisplayMedia({audio: true})` while the selection is read aloud — hosted in a new `chrome.offscreen` document (reason `DISPLAY_MEDIA`), since the MV3 service worker in `background.js` has no document context of its own to call `getDisplayMedia`/`MediaRecorder` from. Auto-downloads with a filename like `graytts-clip-2026-08-13-142201-the-quick-brown-fox.webm` (timestamp + first 4 words of the selection) once the reading finishes; falls back to a timestamp-only filename for symbol-only/non-Latin selections. Every failure path (picker cancelled, wrong picker choice, a capture already in progress, a `chrome.tts` error mid-capture) shows the existing toolbar error badge rather than failing silently. Full design: `docs/superpowers/specs/save-audio-clip.md`. Chrome's screen-share picker can't be bypassed or remembered, so every clip save requires clicking through "Entire Screen" + the audio checkbox — a hard platform constraint, not a bug.
 - 2026-08-12: Added **read-along highlighting** — the word `chrome.tts` is currently speaking
   is now highlighted live on the page for right-click/hotkey reads (not the popup's Preview,
   which has no source page). Uses the CSS Custom Highlight API (`CSS.highlights` + `Highlight`,
