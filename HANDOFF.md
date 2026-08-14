@@ -1,6 +1,6 @@
 # 🧭 Session Handoff — Tool-GrayTTS (GrayTTS)
 
-_Last updated: 2026-08-14 03:45 CT_
+_Last updated: 2026-08-14 15:03 CT_
 
 ## 🧭 North Star & Backlog
 Moved to [`BACKLOG.md`](BACKLOG.md) — that's now the durable home for the roadmap so it
@@ -8,7 +8,35 @@ survives session-log churn here. Check it before starting new feature work. **No
 now Grayson-confirmed** (was previously just proposed).
 
 ## 🎯 Current state
-Version **1.13**, on `main`, **pushed and level with `origin/main`** (`57935d8`). Backlog
+Version **1.14**, on `main`, **pushed and level with `origin/main`** (`d44c243`) — but
+**NOT yet Edge-verified**, unlike every prior session's handoff. This session built a
+right-hand hotkey rebind + two new cancel paths via the full `brainstorming` → spec →
+`writing-plans` → `subagent-driven-development` pipeline (4 tasks + a final whole-branch
+review with 1 fix round), all reviewed clean, then pushed straight from a local Claude Code
+session (no worktree — Grayson explicitly consented to working directly on `main`) on
+Grayson's explicit `/github-push` invocation, ahead of the usual "hold until Edge-verified"
+habit. **The 10-check manual verification list is the very next thing to run** — see
+"Where we stopped" below for the full list.
+
+**v1.14 (this session)** — hotkey suggested default moved from `Ctrl+Shift+Y` to
+`Ctrl+Alt+L` (manifest.json only; Grayson's actual binding lives in
+`chrome://extensions/shortcuts`, per-profile, and needs re-setting by hand). Added a shared
+`stopSpeech()` helper (`chrome.tts.stop()` + clear badge + reset state), reused by the
+popup's existing Stop button. Pressing the read hotkey again while speech is
+speaking/paused now **always** cancels (via `chrome.tts.isSpeaking()`) instead of starting
+a new read, even if the tab's selection changed. Added an **Escape** key listener in
+`content.js` (capture phase, `!event.repeat` guard, never `preventDefault`/
+`stopPropagation`) that sends the same `stop` message from any tab. The final whole-branch
+review (dispatched on the most capable available model) caught two real Important findings
+before any of this reached Grayson: `stopSpeech()` was unconditionally clearing the error
+badge (a stray Escape could wipe an unread failure message), and the Escape listener was on
+the bubble phase (a host page's own handler calling `stopPropagation()` could swallow it —
+exactly the framework-heavy-page class this project has repeatedly had to design around).
+Both fixed in one dispatch, scoped re-review confirmed clean. Full design:
+`docs/superpowers/specs/hotkey-and-cancel.md`; full plan:
+`docs/superpowers/plans/2026-08-14-hotkey-and-cancel.md`.
+
+Prior state, still true — Version **1.13**, Backlog
 items 1–9 are all built and Edge-verified — nothing outstanding on the pending-verification
 front for the first time in several sessions. This session (2026-08-14) covered three
 things: verifying + pushing the two versions left over from last session (v1.11, v1.12),
@@ -129,21 +157,51 @@ Current version: 1.7 (2026-08-12 05:20, commit `52bd64c`, pushed). Grayson confi
 highlighting all work in a real loaded Edge extension.
 
 ## 📌 Where we stopped
-Clean state: everything built this session (v1.11, v1.12, v1.13) is Edge-verified and
-pushed. `main` and `origin/main` are level at `57935d8`. No code is mid-flight.
+v1.14 is code-complete, reviewed clean at every level (4 task reviews + 1 final
+whole-branch review + 1 scoped fix re-review), and pushed to `origin/main` (`d44c243`,
+confirmed synced: `git rev-list --left-right --count origin/main...HEAD` → `0  0`). **Not
+yet run through a real loaded Edge extension.** This is the one loose end from this
+session — pushing ahead of verification was an explicit, one-off deviation from the usual
+habit (Grayson invoked `/github-push` directly), not a new standing policy.
+
+**The manual verification checklist for next session (or Grayson directly) — 10 checks:**
+1. Set the hotkey to `Ctrl+Alt+L` in `edge://extensions/shortcuts`, reload the unpacked
+   extension. Select text, press it → speech starts.
+2. While speaking, press it again → stops immediately.
+3. While speaking, select *different* text, press it → still just stops, doesn't read the
+   new selection.
+4. Start a read, click **Pause** in the popup, press the hotkey → cancels, doesn't start a
+   new read. (Tests the load-bearing assumption that `chrome.tts.isSpeaking()` reports
+   `true` while paused, not just while actively speaking.)
+5. Start a read, press **Escape** → stops.
+6. Start a read on Tab A, switch to Tab B, press Escape there → Tab A's speech stops.
+7. Press Escape with nothing speaking → nothing happens, and any existing error badge on
+   the toolbar icon stays visible (this is what the final-review fix specifically gates).
+8. Start "Save as audio clip," press Escape mid-capture → a partial clip downloads (same as
+   clicking Stop today — it does not abort with nothing saved).
+9. Mid-read, force-terminate the service worker in `edge://extensions`, press Escape →
+   confirm the overlay/highlight on the page still clears.
+10. Regression check: popup's Stop/Pause/Resume and right-click read still work unchanged.
+
+There's also a genuinely **unstarted** second thread from this session: Grayson asked
+whether the desktop companion's (`Util-GrayTTS-Desktop`) caption/overlay view should be
+redesigned center-anchored (active word fixed in the middle, sentence streaming off to the
+right) instead of the current layout. This was never brainstormed — got deferred in favor
+of finishing the hotkey/cancel work first. Needs its own `brainstorming` session in that
+project, not this one.
 
 ## ▶️ Next concrete step
-No forced next step — the backlog (`BACKLOG.md`) is fully caught up (items 1–9 all done and
-verified). Pick based on what Grayson wants next:
-- **Port this session's improvements to the desktop companion** (`Util-GrayTTS-Desktop`) —
-  the thing Grayson explicitly said he wants next, but hasn't asked to start yet. Needs its
-  own `brainstorming` session in that project. Fix its known cloud-voice word-fragmentation
-  bug first (see that project's `HANDOFF.md`) — don't build pause/resume on an overlay
-  that's already dropping words.
-- Revisit the "many voices sound the same" question (low-priority, only if it's bugging him).
-- Close out the still-unverified V: backup first run (see open questions) if V: is reachable.
-- Check whether `Tool-GrayTTS`'s `chrome.tts` now sees the NaturalVoiceSAPIAdapter voices the
-  desktop companion project picked up (flagged as unconfirmed in that project's memory).
+1. **Run the 10-check manual verification list above** in a real loaded Edge extension —
+   nothing else should be built on top of v1.14 until this passes, since it's already
+   pushed and live for anyone tracking `origin/main`.
+2. **Brainstorm the desktop companion's caption/overlay redesign** (center-anchored word,
+   sentence streams right) — raised this session, not yet scoped. Run in
+   `Util-GrayTTS-Desktop`, not here; check that project's own `HANDOFF.md`/memory first
+   (it has an unfixed cloud-voice word-fragmentation bug flagged as higher-priority than
+   any overlay work — see below).
+3. Also still open from prior sessions, lower priority: port the browser extension's
+   pause/play improvements to the desktop companion (see Open questions), and the
+   still-unverified V: backup first run.
 
 ### Word-overlay design (locked 2026-08-12; since built in v1.8 — kept for reference)
 - **Settings:** two independent checkboxes in the popup — "Highlight word on page" and "Show
@@ -173,9 +231,26 @@ verified). Pick based on what Grayson wants next:
   both checkboxes independently, plus confirming Preview stays unaffected.
 
 ## ❓ Open questions
+- **v1.14 not yet Edge-verified** — pushed ahead of manual testing this session (explicit
+  one-off, not new policy). See the 10-check list under "Where we stopped."
+- **Desktop caption/overlay redesign** — center-anchored active word, sentence streaming
+  right — raised this session, not yet brainstormed or scoped. Separate project
+  (`Util-GrayTTS-Desktop`), separate session.
 - **Desktop-companion port** — Grayson wants this session's browser-side improvements
   (clickable overlay pause/play especially) mirrored in `Util-GrayTTS-Desktop`, explicitly
   confirmed but not yet scoped or started. See Next concrete step above.
+- **Minor findings parked, not acted on** (from this session's final review, low-priority):
+  a content script whose extension context was invalidated (e.g. after an unpacked reload)
+  logs an uncaught console error on Escape rather than failing silently; the hotkey-cancel
+  path is gated by the `extensionEnabled` toggle while Escape/Stop aren't (pre-existing gate
+  placement, arguably correct); the spec/README slightly overstate "any tab"/"unaffected"
+  scope (excludes `chrome://` pages and the popup's own Preview, which the new cancel paths
+  do actually affect); the capture-phase Escape listener is still swallowable by a page's
+  own `window`-level capture listener calling `stopImmediatePropagation` (narrower edge case
+  than the bug that was actually fixed).
+- **Scope note, not a bug:** right-click "Read with GrayTTS" while something's already
+  speaking still interrupts and reads the new selection immediately — the "always cancel"
+  rule from this session only applies to the hotkey, by design (per the approved spec).
 - **Selection-clearing edge case (out-of-scope observation from the last review, not
   blocking):** the page selection could theoretically change between a popup save-clip's
   `get_selection` snapshot (used for the spoken/clipped text) and the later
@@ -200,11 +275,29 @@ verified). Pick based on what Grayson wants next:
   prior session purely to preview `popup.html`'s static rendering in the Browser pane, not as a
   test harness.
 
-## 🗂️ Changed this session
-- Branch: `main` throughout (two feature branches, `clickable-overlay-pause` and
-  `relocate-save-clip`, each built in a `.worktrees/` worktree and merged+deleted after a
-  clean final review). Files: `background.js`, `content.js`, `manifest.json`, `popup.html`,
-  `popup.js`, `README.md`, `BACKLOG.md`, plus new specs/plans under `docs/superpowers/`.
+## 🗂️ Changed this session (2026-08-14, part 14)
+- Branch: `main` directly — no worktree this time, Grayson explicitly consented to working
+  on `main` given the small scope (4 mechanical tasks). Files: `manifest.json`,
+  `background.js`, `content.js`, `README.md`, plus
+  `docs/superpowers/specs/hotkey-and-cancel.md` and
+  `docs/superpowers/plans/2026-08-14-hotkey-and-cancel.md`.
+- Answered a tangent first: confirmed via the Browser pane that both "OSM Bench" and the
+  "GRIP" site are the same live Streamlit Community Cloud app at `osmbench.streamlit.app`
+  (it had gone to sleep from inactivity, woke on navigation). Explored whether that could
+  move off Streamlit onto Grayson's own webpage — corrected an assumption mid-conversation
+  (checked `DEPLOY.md` in `C:\Projects-local\Portfolio`: the real site is a static Vite SPA
+  on **Cloudflare Pages**, not Vercel, with zero backend) — Python server-side logic isn't
+  directly portable there; real options are porting scoring logic to TS/Cloudflare Pages
+  Functions, a separate small Python host, or an iframe embed. Not acted on further, no
+  code changed for this — belongs to `OSM-bench`/`Portfolio`/`GRIP`, not this repo.
+- Full `brainstorming` → spec → `writing-plans` → `subagent-driven-development` pipeline for
+  the hotkey rebind + cancel-while-speaking feature (see Current state above for the full
+  technical summary). 4 tasks, each with its own clean task-scoped review; 1 final
+  whole-branch review (most capable available model) that caught 2 real Important findings;
+  1 fix dispatch + 1 scoped re-review, confirmed clean. Version bumped to 1.14.
+- Pushed directly from this local Claude Code session (`git push origin main` — no PAT/cloud
+  flow needed, already on the real working tree) on Grayson's explicit `/github-push`
+  invocation. Confirmed sync after push (`0  0` ahead/behind).
 - Verified and pushed v1.11 (save-as-audio-clip, left over from last session).
 - Built v1.12 end-to-end (backlog item 9, clickable word-overlay pause/play):
   `brainstorming` → spec → `writing-plans` → `subagent-driven-development` (3 tasks + final
@@ -224,6 +317,53 @@ verified). Pick based on what Grayson wants next:
 ---
 
 ## 🕓 Session log
+### 2026-08-14 (part 14) — Right-hand hotkey + cancel-while-speaking (v1.14), pushed unverified
+- Opened on a tangent unrelated to this repo: confirmed the "OSM Bench"/"GRIP" Streamlit
+  site (`osmbench.streamlit.app`) is live (it had gone to sleep, woke on navigation via the
+  Browser pane), then explored moving it off Streamlit onto Grayson's own webpage. Corrected
+  a wrong initial assumption (guessed Vercel; the real site is a static Vite SPA on
+  Cloudflare Pages, `C:\Projects-local\Portfolio`, zero backend) before giving a grounded
+  feasibility answer. No code touched — belongs to other projects, not this one.
+- Grayson asked for a right-hand-reachable hotkey (currently `Ctrl+Alt+S`, entirely
+  left-hand, set via `chrome://extensions/shortcuts` — not reflected in `manifest.json`,
+  which still suggested the stale `Ctrl+Shift+Y` default). Also asked for two new ways to
+  cancel an in-progress read: Escape, and pressing the hotkey again while already speaking.
+  He also raised redesigning the desktop companion's caption view (center-anchored word,
+  sentence streams right) — deferred, see Open questions, never brainstormed this session.
+- Ran the full pipeline: `brainstorming` (one clarifying question resolved the "always
+  cancel vs. only if selection unchanged" ambiguity in favor of always-cancel; a second
+  resolved Escape's scope to "any focused tab") → spec
+  (`docs/superpowers/specs/hotkey-and-cancel.md`) → `writing-plans`
+  (`docs/superpowers/plans/2026-08-14-hotkey-and-cancel.md`) → `subagent-driven-development`.
+  Grayson explicitly consented to working directly on `main` (no worktree) given the small,
+  4-task scope, matching this repo's established direct-to-main habit.
+- 4 tasks, haiku/sonnet implementers per task complexity, each with its own clean
+  spec+quality review: hotkey rebind (manifest.json), `stopSpeech()` helper +
+  `chrome.tts.isSpeaking()`-gated hotkey cancel (background.js), Escape listener
+  (content.js), version bump + changelog (v1.14).
+- Final whole-branch review (dispatched on the most capable available model, per this
+  skill's Model Selection guidance) caught 2 real Important findings the task-level reviews
+  missed: `stopSpeech()` was unconditionally clearing the error badge (a stray Escape with
+  nothing speaking could wipe an unread failure message — the extension's only error
+  surface), and the Escape listener was bubble-phase (a host page's own `stopPropagation()`
+  could swallow it, the same framework-heavy-page problem this project has hit before).
+  Also flagged 3 corrections to the manual-verification checklist (a missing paused-hotkey
+  check, a missing service-worker-respawn check, and wrong expected wording on the
+  clip-capture check) and several Minor findings, parked (see Open questions).
+- Asked Grayson directly which way to resolve finding #1 (gate the badge-clear on actual
+  speaking state, vs. leave it unconditional) rather than guessing — he chose gating. One
+  fix dispatch covered both Important findings; one scoped re-review confirmed both
+  addressed with no new breakage beyond a Minor, parked edge case.
+- Committed the plan doc itself (previously missed — the `writing-plans` skill saves the
+  file but doesn't commit it; caught by checking how the prior `clickable-overlay-pause`
+  plan was committed, matched that convention before pushing).
+- Grayson invoked `/github-push` (this being a local Claude Code session with direct repo
+  access, not a Cowork/cloud session, so a plain `git push origin main` was correct — the
+  `github-push` skill's PAT/clone flow is for cloud sessions without direct access). Pushed
+  7 commits, confirmed synced with `origin/main`. This is **before** manual Edge
+  verification, an explicit deviation from the usual "hold until verified" habit — flagged
+  clearly in Current state/Where we stopped above so it isn't mistaken for a verified ship.
+
 ### 2026-08-14 (part 13) — v1.11/v1.12 verified+pushed, backlog item 9 built, live-debugging pass (v1.13)
 - Picked up from part 12: v1.11 merged but unverified/unpushed, backlog item 9 raised but
   unscoped. Grayson asked specifically about the clickable overlay pause/play idea.
