@@ -57,9 +57,15 @@ GrayTTS" (added in `background.js`'s `createContextMenu()`). Flow when selected:
    reason to lose that during a capture).
 6. On `chrome.tts`'s `'end'` / `'interrupted'` / `'cancelled'` / `'error'` event,
    `background.js` messages the offscreen document to stop. `offscreen.js` finalizes the
-   `.webm` blob, calls `chrome.downloads.download()` to save it, stops all stream tracks
-   (this is what clears Chrome's "you are sharing your screen" indicator bar), and closes
-   the offscreen document.
+   `.webm` blob, stops all stream tracks (this is what clears Chrome's "you are sharing
+   your screen" indicator bar), and hands the finished recording back to `background.js` as
+   a base64 `data:` URL over `chrome.runtime.sendMessage`.
+7. `background.js` — not `offscreen.js` — calls `chrome.downloads.download()` to save the
+   file and `chrome.offscreen.closeDocument()` to tear down the offscreen document.
+   **This ownership split is load-bearing, not a style choice:** offscreen documents only
+   support the `chrome.runtime` API (per Chrome's own offscreen-document reference), so
+   `offscreen.js` cannot call `chrome.downloads` or `chrome.offscreen` itself — it can only
+   ever send a `chrome.runtime` message and let `background.js` act on it.
 
 Two new manifest permissions: `offscreen`, `downloads`.
 
@@ -67,14 +73,16 @@ Two new manifest permissions: `offscreen`, `downloads`.
 
 - **`offscreen.html`** — no visible UI, just loads `offscreen.js`.
 - **`offscreen.js`** — owns the `MediaStream`/`MediaRecorder` lifecycle: `startCapture()`,
-  `stopCapture()` / `abortCapture()` (see Error handling), listens for `background.js`'s
-  `start_capture` / `stop_capture` / `abort_capture` messages, and performs the
-  `chrome.downloads.download()` call once a blob is finalized.
+  listens for `background.js`'s `start_capture` / `stop_capture` / `abort_capture`
+  messages. Only ever calls `chrome.runtime.sendMessage()` in response — never
+  `chrome.downloads` or `chrome.offscreen` (unsupported inside an offscreen document).
+  Hands a finished recording to `background.js` as a base64 `data:` URL.
 - **`background.js`** — new case in the context-menu listener for a `'save-clip'` menu id,
-  plus a small state flag (idle → awaiting-capture-ready → speaking → awaiting-stop) so a
-  normal "Read with GrayTTS" click and a "Save as audio clip" click can't interfere with
-  each other, and so a second "Save as audio clip" click while one is already running is
-  ignored rather than racing.
+  a state flag (idle → awaiting-capture → capturing → finishing) so a normal "Read with
+  GrayTTS" click and a "Save as audio clip" click can't interfere with each other and so a
+  second "Save as audio clip" click while one is already running is ignored rather than
+  racing, and now also owns the `chrome.downloads.download()` and
+  `chrome.offscreen.closeDocument()` calls (see Architecture above).
 - **`manifest.json`** — add `"offscreen"` and `"downloads"` to `permissions`.
 
 ## File naming and format
