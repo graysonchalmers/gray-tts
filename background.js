@@ -222,7 +222,7 @@ function speak(text, tabId, isClip) {
                     console.error('chrome.tts error:', event.errorMessage);
                     showErrorBadge(event.errorMessage);
                     setSpeechState('idle');
-                    currentSpeakingTabId = undefined;
+                    if (currentSpeakingTabId === tabId) currentSpeakingTabId = undefined;
                     if (tabId !== undefined) sendClearHighlight(tabId);
                     if (isClip && clipCaptureState === 'capturing') {
                         chrome.runtime.sendMessage({message: 'abort_capture'});
@@ -245,7 +245,7 @@ function speak(text, tabId, isClip) {
                     }, () => { if (chrome.runtime.lastError) { /* tab navigated away mid-speech — ignore */ } });
                 } else if (event.type === 'end' || event.type === 'interrupted' || event.type === 'cancelled') {
                     setSpeechState('idle');
-                    currentSpeakingTabId = undefined;
+                    if (currentSpeakingTabId === tabId) currentSpeakingTabId = undefined;
                     if (tabId !== undefined) sendClearHighlight(tabId);
                     if (isClip && clipCaptureState === 'capturing') {
                         chrome.runtime.sendMessage({message: 'stop_capture'});
