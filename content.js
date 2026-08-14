@@ -86,6 +86,11 @@ function highlightProgress(charIndex, length) {
 // pages like Gemini.
 let overlayHost = null;
 let overlayText = null;
+// Whether the overlay is currently showing its "paused" look (red text, frozen word).
+// Tracks confirmed state only — flipped by the speech_paused/speech_resumed messages in the
+// listener below, never optimistically on click, so the overlay never lies about state if
+// chrome.tts.pause()/resume() were to silently fail for some reason.
+let overlayPaused = false;
 
 function ensureOverlay() {
     if (overlayHost) return overlayText;
@@ -97,9 +102,13 @@ function ensureOverlay() {
     style.textContent = `
         div { background: rgba(20, 20, 24, 0.9); border-radius: 8px;
               box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4); color: #fff; font-weight: bold;
-              font-size: 22px; padding: 8px 22px; font-family: system-ui, sans-serif; }
+              font-size: 22px; padding: 8px 22px; font-family: system-ui, sans-serif;
+              pointer-events: auto; cursor: pointer; }
     `;
     overlayText = document.createElement('div');
+    overlayText.addEventListener('click', () => {
+        chrome.runtime.sendMessage({message: overlayPaused ? 'resume' : 'pause'});
+    });
     shadow.appendChild(style);
     shadow.appendChild(overlayText);
     document.body.appendChild(overlayHost);
@@ -116,8 +125,19 @@ function renderOverlay(charIndex, length) {
     overlayHost.style.display = 'block';
 }
 
+// Sets the overlay's paused/not-paused look. Only ever called from the speech_paused/
+// speech_resumed message handler below — never from the click handler itself, so the
+// overlay's color always reflects background.js's confirmed chrome.tts state, not an
+// optimistic guess about whether pause()/resume() actually took effect.
+function setOverlayPausedStyle(paused) {
+    if (!overlayText) return;
+    overlayText.style.color = paused ? '#ff5555' : '#fff';
+}
+
 function clearOverlay() {
     if (overlayHost) overlayHost.style.display = 'none';
+    overlayPaused = false;
+    setOverlayPausedStyle(false);
 }
 
 function clearHighlight() {
@@ -138,6 +158,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         if (request.showOverlay) renderOverlay(request.charIndex, request.length);
     } else if (request.message === 'clear_highlight') {
         clearHighlight();
+    } else if (request.message === 'speech_paused') {
+        overlayPaused = true;
+        setOverlayPausedStyle(true);
+    } else if (request.message === 'speech_resumed') {
+        overlayPaused = false;
+        setOverlayPausedStyle(false);
     }
     return true; // Keep the message channel open until sendResponse is called
 });
