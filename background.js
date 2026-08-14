@@ -17,7 +17,19 @@ let clipCaptureTabId = null;
 const OFFSCREEN_DOCUMENT_PATH = 'offscreen.html';
 
 async function ensureOffscreenDocument() {
-    if (await chrome.offscreen.hasDocument()) return;
+    // startClipCapture()'s own guard only calls this when clipCaptureState is 'idle'. Given
+    // that background.js closes the offscreen document in every terminal branch (Step 5)
+    // before ever returning to 'idle', an existing document at this point can only be a
+    // stale leftover — most likely the MV3 service worker was torn down and respawned
+    // (resetting this file's in-memory clipCaptureState back to 'idle') while the previous
+    // capture's getDisplayMedia picker was still open, orphaning that document. There's no
+    // way to tell a stale document apart from a legitimately-still-open one here, so always
+    // close and recreate rather than reusing it — self-heals a stuck capture on the very
+    // next attempt instead of leaving the extension unable to ever open a new one (Chrome
+    // allows only one offscreen document at a time).
+    if (await chrome.offscreen.hasDocument()) {
+        await chrome.offscreen.closeDocument();
+    }
     await chrome.offscreen.createDocument({
         url: OFFSCREEN_DOCUMENT_PATH,
         reasons: ['DISPLAY_MEDIA'],
