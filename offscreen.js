@@ -26,7 +26,11 @@ chrome.runtime.onMessage.addListener((request) => {
         if (mediaRecorder && mediaRecorder.state !== 'inactive') {
             mediaRecorder.stop();
         } else {
-            chrome.runtime.sendMessage({message: 'capture_aborted'});
+            // A normal finalize with no active recorder to stop — background.js only
+            // sends stop_capture after chrome.tts finished successfully (no error of its
+            // own that would already be badged), so this needs its own signal rather than
+            // reusing capture_aborted (which background.js treats as already-explained).
+            chrome.runtime.sendMessage({message: 'capture_empty'});
             releaseStream();
         }
     } else if (request.message === 'abort_capture') {
@@ -77,22 +81,33 @@ async function startCapture() {
 }
 
 function handleRecorderStop() {
-    if (stopPurpose === 'finalize' && recordedChunks.length > 0) {
-        const blob = new Blob(recordedChunks, {type: 'audio/webm'});
-        const reader = new FileReader();
-        reader.onloadend = () => {
-            // chrome.downloads isn't usable from inside an offscreen document (see header
-            // comment), so hand the finished recording to background.js as a data: URL
-            // string — chrome.runtime messaging can carry a plain string, but a blob:
-            // object URL created here would not resolve in background.js's context, and a
-            // Blob itself can't cross this message boundary either.
-            chrome.runtime.sendMessage({message: 'capture_finished', dataUrl: reader.result});
+    if (stopPurpose === 'finalize') {
+        if (recordedChunks.length > 0) {
+            const blob = new Blob(recordedChunks, {type: 'audio/webm'});
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                // chrome.downloads isn't usable from inside an offscreen document (see
+                // header comment), so hand the finished recording to background.js as a
+                // data: URL string — chrome.runtime messaging can carry a plain string,
+                // but a blob: object URL created here would not resolve in
+                // background.js's context, and a Blob itself can't cross this message
+                // boundary either.
+                chrome.runtime.sendMessage({message: 'capture_finished', dataUrl: reader.result});
+                releaseStream();
+            };
+            reader.readAsDataURL(blob);
+        } else {
+            // A normal finalize (chrome.tts finished with no error of its own — that
+            // path sends abort_capture instead, see the message listener above) but
+            // nothing was actually recorded, e.g. an extremely short selection read so
+            // fast no audio data accumulated. Distinct from capture_aborted, which
+            // background.js treats as already explained elsewhere.
+            chrome.runtime.sendMessage({message: 'capture_empty'});
             releaseStream();
-        };
-        reader.readAsDataURL(blob);
+        }
     } else {
-        // Either an explicit abort, or a finalize with nothing recorded (e.g. chrome.tts
-        // ended near-instantly) — nothing to download.
+        // Explicit abort — background.js's speak() error branch already showed a badge
+        // for whatever chrome.tts error triggered this, so nothing more to say here.
         chrome.runtime.sendMessage({message: 'capture_aborted'});
         releaseStream();
     }
