@@ -37,7 +37,7 @@
   "commands": {
     "read_selection": {
       "suggested_key": {
-        "default": "Ctrl+Shift+Y"
+        "default": "Ctrl+Alt+L"
       },
       "description": "Read selected text with GrayTTS"
     }
