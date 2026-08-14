@@ -115,7 +115,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         clearBadge();
         setSpeechState('idle');
     } else if (request.message === 'capture_ready') {
-        if (clipCaptureState !== 'awaiting_capture') return;
+        if (clipCaptureState !== 'awaiting_capture') { chrome.offscreen.closeDocument(); return; }
         clipCaptureState = 'capturing';
         speak(clipCaptureText, clipCaptureTabId, true);
     } else if (request.message === 'capture_cancelled' || request.message === 'capture_no_audio') {
@@ -142,6 +142,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         chrome.offscreen.closeDocument();
         showErrorBadge('Clip too short to save — nothing was recorded');
     } else if (request.message === 'capture_aborted') {
+        if (clipCaptureState === 'capturing') {
+            // The MediaRecorder stopped on its own — most likely the user clicked "Stop
+            // sharing" on the browser's own screen-share indicator bar mid-capture,
+            // ending things outside our own stop_capture/abort_capture flow entirely.
+            // chrome.tts may still be speaking. Badge it — an explicit abort_capture we
+            // sent ourselves (state already 'finishing' by the time this arrives, see
+            // speak()) is handled by the branch below with no new badge, since
+            // speak()'s own error handling already explained that one.
+            chrome.offscreen.closeDocument();
+            resetClipCaptureState();
+            showErrorBadge('Clip capture stopped — screen sharing ended');
+            return;
+        }
         chrome.offscreen.closeDocument();
         resetClipCaptureState();
     } else if (request.selection) {
@@ -191,7 +204,7 @@ function speak(text, tabId, isClip) {
                     showErrorBadge(event.errorMessage);
                     setSpeechState('idle');
                     if (tabId !== undefined) sendClearHighlight(tabId);
-                    if (isClip) {
+                    if (isClip && clipCaptureState === 'capturing') {
                         chrome.runtime.sendMessage({message: 'abort_capture'});
                         clipCaptureState = 'finishing';
                     }
@@ -213,7 +226,7 @@ function speak(text, tabId, isClip) {
                 } else if (event.type === 'end' || event.type === 'interrupted' || event.type === 'cancelled') {
                     setSpeechState('idle');
                     if (tabId !== undefined) sendClearHighlight(tabId);
-                    if (isClip) {
+                    if (isClip && clipCaptureState === 'capturing') {
                         chrome.runtime.sendMessage({message: 'stop_capture'});
                         clipCaptureState = 'finishing';
                     }
