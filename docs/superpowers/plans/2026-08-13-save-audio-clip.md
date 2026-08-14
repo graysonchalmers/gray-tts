@@ -4,7 +4,7 @@
 
 **Goal:** Add a "Save as audio clip" context-menu item that records the spoken selection as a downloaded `.webm` file.
 
-**Architecture:** A new `chrome.offscreen` document (reason `DISPLAY_MEDIA`) hosts `getDisplayMedia`/`MediaRecorder` capture, since `background.js`'s MV3 service worker has no document context of its own. `background.js` creates the offscreen document on click, waits for it to confirm the capture stream is ready, then calls the existing `chrome.tts.speak()` pipeline; when speech ends, it tells the offscreen document to finalize and download the recording.
+**Architecture:** A new `chrome.offscreen` document (reason `DISPLAY_MEDIA`) hosts `getDisplayMedia`/`MediaRecorder` capture, since `background.js`'s MV3 service worker has no document context of its own. `background.js` creates the offscreen document on click, waits for it to confirm the capture stream is ready, then calls the existing `chrome.tts.speak()` pipeline; when speech ends, it tells the offscreen document to finalize. Offscreen documents only support the `chrome.runtime` API (confirmed against Chrome's own offscreen-document reference), so the offscreen document never calls `chrome.downloads` or `chrome.offscreen` itself — it hands the finished recording back to `background.js` as a base64 `data:` URL over `chrome.runtime.sendMessage`, and `background.js` owns both starting the download and closing the offscreen document in every terminal case.
 
 **Tech Stack:** Plain MV3 Chrome/Edge extension JS (no bundler, no framework), `chrome.offscreen`, `chrome.downloads`, `getDisplayMedia`, `MediaRecorder`. Node's built-in test runner (`node --test`) for the one pure-logic module this feature adds.
 
@@ -21,6 +21,10 @@
   any page out loud should take one keystroke and never silently fail").
 - Native `MediaRecorder` `.webm` (Opus) output is used as-is — no format conversion.
 - Two new manifest permissions: `"offscreen"`, `"downloads"`.
+- **Offscreen documents only support the `chrome.runtime` API** (confirmed against
+  Chrome's own reference). `offscreen.js` must never call `chrome.downloads` or
+  `chrome.offscreen` itself — only `background.js` may call
+  `chrome.downloads.download()` or `chrome.offscreen.closeDocument()`.
 - No automated browser-level test harness exists or should be introduced for this feature.
   Only pure-logic code (no `chrome.*`/DOM APIs) gets Node tests, following the existing
   `lib/settings.js` + `test/settings.test.js` pattern (`node --test`,
@@ -178,16 +182,29 @@ git commit -m "Add pure clip-filename generation logic with Node tests"
 - Modify: `manifest.json` (add `"offscreen"` and `"downloads"` permissions)
 
 **Interfaces:**
-- Consumes: `GrayTTSClipFilename.buildClipFilename(text, date)` from Task 1.
 - Produces: message-based protocol `background.js` (Task 3) sends/receives via
-  `chrome.runtime.sendMessage`/`chrome.runtime.onMessage`:
-  - Inbound to offscreen: `{message: 'start_capture', text}`, `{message: 'stop_capture'}`,
-    `{message: 'abort_capture'}`.
-  - Outbound from offscreen: `{message: 'capture_ready'}`,
-    `{message: 'capture_cancelled'}`, `{message: 'capture_no_audio'}`.
-  - The offscreen document closes itself (`chrome.offscreen.closeDocument()`) at the end
-    of every capture attempt (success, cancel, no-audio, or abort) — `background.js` never
-    needs to close it.
+  `chrome.runtime.sendMessage`/`chrome.runtime.onMessage`. **Important:** offscreen
+  documents only support the `chrome.runtime` API (Chrome's own offscreen-document
+  reference states this explicitly) — `offscreen.js` never calls `chrome.downloads` or
+  `chrome.offscreen` itself. It only ever sends plain `chrome.runtime` messages;
+  `background.js` (Task 3) owns every `chrome.downloads.download()` call and every
+  `chrome.offscreen.closeDocument()` call, in response to those messages.
+  - Inbound to offscreen: `{message: 'start_capture'}`, `{message: 'stop_capture'}`,
+    `{message: 'abort_capture'}` (no selection text needed here — filename generation now
+    happens in `background.js`, which already has the text from `startClipCapture()`).
+  - Outbound from offscreen: `{message: 'capture_ready'}` (stream obtained, recording
+    started), `{message: 'capture_cancelled'}` (picker denied/cancelled),
+    `{message: 'capture_no_audio'}` (no audio track in the captured stream),
+    `{message: 'capture_finished', dataUrl}` (recording finalized — `dataUrl` is a base64
+    `data:audio/webm;...` string, not a `blob:` object URL, since a `blob:` URL created in
+    the offscreen document wouldn't resolve in `background.js`'s context, and `chrome.
+    runtime.sendMessage` can carry a plain string but not a `Blob`), `{message:
+    'capture_aborted'}` (either an explicit `abort_capture`, or a `stop_capture` that had
+    nothing recorded).
+  - `offscreen.js` never calls `chrome.offscreen.closeDocument()`. `background.js` closes
+    the document itself upon receiving any of the five outbound messages above — this also
+    means the document is never torn down before its own message has actually been
+    delivered (no close-before-delivery race).
 
 - [ ] **Step 1: Add the new permissions to `manifest.json`**
 
@@ -238,32 +255,39 @@ to:
 // background.js's MV3 service worker has no document/window context of its own, so the
 // getDisplayMedia()/MediaRecorder screen-audio-capture calls this feature needs have to
 // happen here instead — the whole reason this file/document exists.
+//
+// Offscreen documents only support the chrome.runtime API (Chrome's own offscreen-document
+// reference states this explicitly) — chrome.downloads and chrome.offscreen itself are NOT
+// usable from inside this file. Every terminal path below only ever sends a chrome.runtime
+// message; background.js owns calling chrome.downloads.download() and
+// chrome.offscreen.closeDocument() in response, which also means this document is never
+// torn down before its own message has actually been delivered.
 
 let mediaRecorder = null;
 let recordedChunks = [];
 let displayStream = null;
-let clipText = '';
 // Set right before mediaRecorder.stop() so the onstop handler knows whether to finalize
-// and download the recording, or discard it (e.g. a mid-capture chrome.tts error).
+// and hand off the recording, or discard it (e.g. a mid-capture chrome.tts error).
 let stopPurpose = null; // 'finalize' | 'abort'
 
 chrome.runtime.onMessage.addListener((request) => {
     if (request.message === 'start_capture') {
-        clipText = request.text || '';
         startCapture();
     } else if (request.message === 'stop_capture') {
         stopPurpose = 'finalize';
         if (mediaRecorder && mediaRecorder.state !== 'inactive') {
             mediaRecorder.stop();
         } else {
-            cleanupAndClose();
+            chrome.runtime.sendMessage({message: 'capture_aborted'});
+            releaseStream();
         }
     } else if (request.message === 'abort_capture') {
         stopPurpose = 'abort';
         if (mediaRecorder && mediaRecorder.state !== 'inactive') {
             mediaRecorder.stop();
         } else {
-            cleanupAndClose();
+            chrome.runtime.sendMessage({message: 'capture_aborted'});
+            releaseStream();
         }
     }
 });
@@ -272,9 +296,10 @@ async function startCapture() {
     try {
         displayStream = await navigator.mediaDevices.getDisplayMedia({video: true, audio: true});
     } catch (err) {
-        // User cancelled/denied the picker.
+        // User cancelled/denied the picker. background.js closes this document once it
+        // receives this message — this file never calls chrome.offscreen.closeDocument()
+        // itself (unsupported here, see header comment).
         chrome.runtime.sendMessage({message: 'capture_cancelled'});
-        cleanupAndClose();
         return;
     }
 
@@ -283,7 +308,7 @@ async function startCapture() {
         // Picked a specific window/tab without checking "share audio", or the chosen
         // source doesn't support audio capture at all.
         chrome.runtime.sendMessage({message: 'capture_no_audio'});
-        cleanupAndClose();
+        releaseStream();
         return;
     }
 
@@ -306,21 +331,26 @@ async function startCapture() {
 function handleRecorderStop() {
     if (stopPurpose === 'finalize' && recordedChunks.length > 0) {
         const blob = new Blob(recordedChunks, {type: 'audio/webm'});
-        const url = URL.createObjectURL(blob);
-        const filename = GrayTTSClipFilename.buildClipFilename(clipText, new Date());
-        chrome.downloads.download({url, filename, saveAs: false}, () => {
-            if (chrome.runtime.lastError) {
-                console.error('GrayTTS clip download failed:', chrome.runtime.lastError.message);
-            }
-            URL.revokeObjectURL(url);
-            cleanupAndClose();
-        });
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            // chrome.downloads isn't usable from inside an offscreen document (see header
+            // comment), so hand the finished recording to background.js as a data: URL
+            // string — chrome.runtime messaging can carry a plain string, but a blob:
+            // object URL created here would not resolve in background.js's context, and a
+            // Blob itself can't cross this message boundary either.
+            chrome.runtime.sendMessage({message: 'capture_finished', dataUrl: reader.result});
+            releaseStream();
+        };
+        reader.readAsDataURL(blob);
     } else {
-        cleanupAndClose();
+        // Either an explicit abort, or a finalize with nothing recorded (e.g. chrome.tts
+        // ended near-instantly) — nothing to download.
+        chrome.runtime.sendMessage({message: 'capture_aborted'});
+        releaseStream();
     }
 }
 
-function cleanupAndClose() {
+function releaseStream() {
     if (displayStream) {
         displayStream.getTracks().forEach((t) => t.stop());
         displayStream = null;
@@ -328,7 +358,9 @@ function cleanupAndClose() {
     mediaRecorder = null;
     recordedChunks = [];
     stopPurpose = null;
-    chrome.offscreen.closeDocument();
+    // Deliberately no chrome.offscreen.closeDocument() call here — unsupported inside an
+    // offscreen document (see header comment). background.js closes the document once it
+    // has received one of this file's outbound messages.
 }
 ```
 
@@ -354,15 +386,34 @@ git commit -m "Add offscreen document for system-audio clip capture"
 - Modify: `background.js`
 
 **Interfaces:**
-- Consumes: `offscreen.js`'s message protocol from Task 2 (`capture_ready`,
-  `capture_cancelled`, `capture_no_audio` inbound; sends `start_capture`, `stop_capture`,
-  `abort_capture`).
+- Consumes: `offscreen.js`'s message protocol from Task 2 — receives `capture_ready`,
+  `capture_cancelled`, `capture_no_audio`, `capture_finished` (carries `dataUrl`),
+  `capture_aborted`; sends `start_capture`, `stop_capture`, `abort_capture`. Also consumes
+  `GrayTTSClipFilename.buildClipFilename(text, date)` from Task 1 (filename generation
+  happens here now, not in `offscreen.js` — see Task 2's note on offscreen documents only
+  supporting `chrome.runtime`).
 - Produces: extends the existing `speak(text, tabId)` function (used by the context-menu
   `'read'` handler, the hotkey handler, and the popup's raw `{selection}` message path) to
   `speak(text, tabId, isClip)` — the new third parameter defaults to falsy, so none of the
   three existing call sites need to change.
 
-- [ ] **Step 1: Add the second context-menu item**
+- [ ] **Step 1: Load `lib/clipFilename.js` into the service worker**
+
+`background.js` currently does filename generation nowhere — that logic now lives here
+(not in `offscreen.js`, since offscreen documents can't call `chrome.downloads`; see Task
+2). Change the top of `background.js`:
+
+```js
+importScripts('lib/settings.js');
+```
+
+to:
+
+```js
+importScripts('lib/settings.js', 'lib/clipFilename.js');
+```
+
+- [ ] **Step 2: Add the second context-menu item**
 
 In `background.js`, `createContextMenu()` currently creates only the `'read'` item. Change:
 
@@ -393,7 +444,7 @@ function createContextMenu() {
 }
 ```
 
-- [ ] **Step 2: Branch the context-menu click handler on `menuItemId`**
+- [ ] **Step 3: Branch the context-menu click handler on `menuItemId`**
 
 Change:
 
@@ -418,7 +469,7 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 });
 ```
 
-- [ ] **Step 3: Add the clip-capture state and orchestration functions**
+- [ ] **Step 4: Add the clip-capture state and orchestration functions**
 
 Add near the top of `background.js`, alongside the existing `extensionEnabled`/
 `ttsSettings` module-level variables:
@@ -427,7 +478,11 @@ Add near the top of `background.js`, alongside the existing `extensionEnabled`/
 // State for the in-progress "Save as audio clip" flow, if any. 'idle' the rest of the
 // time. A second save-clip trigger while this isn't 'idle' is ignored (see
 // startClipCapture) rather than racing two offscreen captures against each other.
-let clipCaptureState = 'idle'; // 'idle' | 'awaiting_capture' | 'capturing'
+// 'finishing' covers the gap between telling the offscreen document to stop/abort and it
+// actually confirming that back (capture_finished/capture_aborted) — without this state,
+// a save-clip trigger during that gap could race a second offscreen document into
+// existence before the first one's teardown message arrives.
+let clipCaptureState = 'idle'; // 'idle' | 'awaiting_capture' | 'capturing' | 'finishing'
 let clipCaptureText = null;
 let clipCaptureTabId = null;
 
@@ -452,7 +507,7 @@ async function startClipCapture(text, tabId) {
     clipCaptureText = text;
     clipCaptureTabId = tabId;
     await ensureOffscreenDocument();
-    chrome.runtime.sendMessage({message: 'start_capture', text});
+    chrome.runtime.sendMessage({message: 'start_capture'});
 }
 
 function resetClipCaptureState() {
@@ -462,11 +517,13 @@ function resetClipCaptureState() {
 }
 ```
 
-- [ ] **Step 4: Handle the offscreen document's reply messages**
+- [ ] **Step 5: Handle the offscreen document's reply messages**
 
-In the existing `chrome.runtime.onMessage.addListener` in `background.js`, add three more
+In the existing `chrome.runtime.onMessage.addListener` in `background.js`, add these more
 `else if` branches (after the existing `'stop'` branch, before the existing
-`else if (request.selection)` branch):
+`else if (request.selection)` branch). `background.js` owns every
+`chrome.downloads.download()` and `chrome.offscreen.closeDocument()` call — `offscreen.js`
+(Task 2) never calls either itself, since offscreen documents only support `chrome.runtime`:
 
 ```js
     } else if (request.message === 'capture_ready') {
@@ -474,13 +531,29 @@ In the existing `chrome.runtime.onMessage.addListener` in `background.js`, add t
         clipCaptureState = 'capturing';
         speak(clipCaptureText, clipCaptureTabId, true);
     } else if (request.message === 'capture_cancelled' || request.message === 'capture_no_audio') {
+        if (clipCaptureState !== 'awaiting_capture') { chrome.offscreen.closeDocument(); return; }
         resetClipCaptureState();
+        chrome.offscreen.closeDocument();
         showErrorBadge(request.message === 'capture_no_audio'
             ? "No audio in capture — pick Entire Screen + check 'share audio'"
             : 'Clip capture cancelled');
+    } else if (request.message === 'capture_finished') {
+        if (clipCaptureState !== 'finishing') { chrome.offscreen.closeDocument(); return; }
+        const filename = GrayTTSClipFilename.buildClipFilename(clipCaptureText, new Date());
+        chrome.downloads.download({url: request.dataUrl, filename, saveAs: false}, () => {
+            if (chrome.runtime.lastError) {
+                console.error('GrayTTS clip download failed:', chrome.runtime.lastError.message);
+                showErrorBadge('Clip download failed');
+            }
+            chrome.offscreen.closeDocument();
+        });
+        resetClipCaptureState();
+    } else if (request.message === 'capture_aborted') {
+        chrome.offscreen.closeDocument();
+        resetClipCaptureState();
 ```
 
-- [ ] **Step 5: Extend `speak()` to accept and act on `isClip`**
+- [ ] **Step 6: Extend `speak()` to accept and act on `isClip`**
 
 Change the function signature and the `'error'` / end-family branches inside its
 `onEvent` handler. Current:
@@ -515,7 +588,7 @@ becomes:
                     if (tabId !== undefined) sendClearHighlight(tabId);
                     if (isClip) {
                         chrome.runtime.sendMessage({message: 'abort_capture'});
-                        resetClipCaptureState();
+                        clipCaptureState = 'finishing';
                     }
 ```
 
@@ -536,17 +609,25 @@ becomes:
                     if (tabId !== undefined) sendClearHighlight(tabId);
                     if (isClip) {
                         chrome.runtime.sendMessage({message: 'stop_capture'});
-                        resetClipCaptureState();
+                        clipCaptureState = 'finishing';
                     }
                 }
 ```
 
-- [ ] **Step 6: Syntax-check `background.js`**
+Note: neither branch calls `resetClipCaptureState()` directly — that only happens once
+`capture_finished`/`capture_aborted`/`capture_cancelled`/`capture_no_audio` actually
+arrives back from the offscreen document (Step 5). Resetting immediately here, before the
+offscreen document has confirmed it's actually done, would let a second "Save as audio
+clip" click slip through `startClipCapture()`'s `clipCaptureState !== 'idle'` guard and
+race a brand-new offscreen document into existence while the old one is still tearing down
+(Chrome only allows one at a time).
+
+- [ ] **Step 7: Syntax-check `background.js`**
 
 Run: `node --check background.js`
 Expected: no output (silent success).
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
 git add background.js
@@ -640,11 +721,26 @@ re-verify — don't mark backlog item 7 done in `BACKLOG.md` until all 7 pass.
   each covered by a task above. Deferred items (network TTS provider, clickable overlay
   toggle) are intentionally out of scope per the spec and not represented here.
 - **Type/interface consistency:** `GrayTTSClipFilename.buildClipFilename(text, date)`
-  (Task 1) is called with `(clipText, new Date())` in `offscreen.js` (Task 2) — matches.
-  The `start_capture` / `stop_capture` / `abort_capture` / `capture_ready` /
-  `capture_cancelled` / `capture_no_audio` message names are used identically in both
-  Task 2 (`offscreen.js`) and Task 3 (`background.js`). `speak(text, tabId, isClip)`'s
-  new third parameter is additive-only — the three pre-existing call sites
-  (`speak(info.selectionText, tab && tab.id)` in the `'read'` menu branch,
-  `speak(response.selection, tab.id)` in the hotkey handler, `speak(request.selection)` in
-  the raw-selection message branch) are untouched and keep working with `isClip` undefined.
+  (Task 1) is called with `(clipCaptureText, new Date())` in `background.js` (Task 3, via
+  the new `importScripts('lib/settings.js', 'lib/clipFilename.js')`) — matches. The
+  `start_capture` / `stop_capture` / `abort_capture` / `capture_ready` /
+  `capture_cancelled` / `capture_no_audio` / `capture_finished` / `capture_aborted`
+  message names are used identically in both Task 2 (`offscreen.js`) and Task 3
+  (`background.js`). `speak(text, tabId, isClip)`'s new third parameter is additive-only —
+  the three pre-existing call sites (`speak(info.selectionText, tab && tab.id)` in the
+  `'read'` menu branch, `speak(response.selection, tab.id)` in the hotkey handler,
+  `speak(request.selection)` in the raw-selection message branch) are untouched and keep
+  working with `isClip` undefined.
+- **Architecture correction (made mid-implementation, after Task 2's first pass):**
+  Chrome's offscreen-document reference states "the runtime API is the only extensions API
+  supported by offscreen documents" — confirmed directly against
+  `https://developer.chrome.com/docs/extensions/reference/api/offscreen`. The original
+  version of this plan had `offscreen.js` calling `chrome.downloads.download()` and
+  `chrome.offscreen.closeDocument()` directly, which would have thrown at runtime. Task
+  2's implementer flagged this (DONE_WITH_CONCERNS) after independently checking Chrome's
+  own docs; the fix moves both
+  calls into `background.js` (Task 3), with `offscreen.js` only ever sending
+  `chrome.runtime` messages. This also fixed two related races the same implementer
+  flagged: a `blob:`-URL-revoked-before-download-finishes risk (replaced with a `data:`
+  URL sent whole over the message channel) and a close-before-message-delivered race
+  (fixed by having `background.js`, not `offscreen.js`, decide when to close).
