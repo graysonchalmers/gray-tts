@@ -93,11 +93,7 @@ chrome.runtime.onInstalled.addListener(() => {
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
     if (!extensionEnabled) return;
-    if (info.menuItemId === 'save-clip') {
-        startClipCapture(info.selectionText, tab && tab.id);
-    } else {
-        speak(info.selectionText, tab && tab.id);
-    }
+    speak(info.selectionText, tab && tab.id);
 });
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -304,28 +300,30 @@ function createContextMenu() {
         title: 'Read with GrayTTS',
         contexts: ['selection']  // Only show the option when text is selected
     });
-    chrome.contextMenus.create({
-        id: 'save-clip',
-        title: 'Save as audio clip',
-        contexts: ['selection']
+}
+
+// Shared by the hotkey handler and the popup's "Save as audio clip" button — both need
+// "whatever text is currently selected on the active tab," fetched the same way.
+function getActiveTabSelectionText(callback) {
+    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+        const tab = tabs[0];
+        if (!tab) { callback('', undefined); return; }
+        chrome.tabs.sendMessage(tab.id, {text: 'get_selection'}, function(response) {
+            if (chrome.runtime.lastError) {
+                console.error(chrome.runtime.lastError.message);
+                callback('', tab.id);
+                return;
+            }
+            callback((response && response.selection) || '', tab.id);
+        });
     });
 }
 
 // Listen for the hotkey command
 chrome.commands.onCommand.addListener(function(command) {
     if (command === 'read_selection' && extensionEnabled) {
-        chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-            const tab = tabs[0];
-            if (!tab) return;
-            chrome.tabs.sendMessage(tab.id, {text: 'get_selection'}, function(response) {
-                if (chrome.runtime.lastError) {
-                    console.error(chrome.runtime.lastError.message);
-                    return;
-                }
-                if (response && response.selection) {
-                    speak(response.selection, tab.id);
-                }
-            });
+        getActiveTabSelectionText((text, tabId) => {
+            if (text) speak(text, tabId);
         });
     }
 });
