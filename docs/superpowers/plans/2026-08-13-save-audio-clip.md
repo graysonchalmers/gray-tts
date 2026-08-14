@@ -1,0 +1,650 @@
+# Save Audio Clip Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Add a "Save as audio clip" context-menu item that records the spoken selection as a downloaded `.webm` file.
+
+**Architecture:** A new `chrome.offscreen` document (reason `DISPLAY_MEDIA`) hosts `getDisplayMedia`/`MediaRecorder` capture, since `background.js`'s MV3 service worker has no document context of its own. `background.js` creates the offscreen document on click, waits for it to confirm the capture stream is ready, then calls the existing `chrome.tts.speak()` pipeline; when speech ends, it tells the offscreen document to finalize and download the recording.
+
+**Tech Stack:** Plain MV3 Chrome/Edge extension JS (no bundler, no framework), `chrome.offscreen`, `chrome.downloads`, `getDisplayMedia`, `MediaRecorder`. Node's built-in test runner (`node --test`) for the one pure-logic module this feature adds.
+
+## Global Constraints
+
+- Plain unpacked MV3 extension, **no bundler/build tooling** — every new file must be
+  valid, directly browser-loadable JS/HTML (`<script src="...">` in HTML, `importScripts`
+  in the service worker), no `import`/`export` syntax.
+- Filename format: `graytts-clip-<YYYY-MM-DD-HHmmss>-<first-4-words-slugified>.webm`.
+- Saved via `chrome.downloads.download({url, filename, saveAs: false})` — no subfolder, no
+  "Save As" prompt.
+- Every new failure path reuses the existing `showErrorBadge()` toolbar-badge mechanism in
+  `background.js` — no silent failures (project North Star: "Reading any selected text on
+  any page out loud should take one keystroke and never silently fail").
+- Native `MediaRecorder` `.webm` (Opus) output is used as-is — no format conversion.
+- Two new manifest permissions: `"offscreen"`, `"downloads"`.
+- No automated browser-level test harness exists or should be introduced for this feature.
+  Only pure-logic code (no `chrome.*`/DOM APIs) gets Node tests, following the existing
+  `lib/settings.js` + `test/settings.test.js` pattern (`node --test`,
+  `node:assert/strict`, dual `module.exports`/global-attach export at the bottom of the
+  file). Everything touching `chrome.tts`/`chrome.offscreen`/`getDisplayMedia` is verified
+  manually in a real loaded Edge extension — an agentic worker cannot click through Chrome's
+  native screen-share picker or hear real speaker output, so Task 4's verification step is
+  written as instructions for Grayson to run himself, not something the implementing agent
+  can complete solo.
+- Version bump convention (see `README.md`'s "Version" section): bump `manifest.json`'s
+  `version` and `version_name` together, `version_name` becomes
+  `"<version> (<local date> <local time>)"`; add a dated bullet to README's "Change Notes".
+
+---
+
+### Task 1: Clip filename logic (`lib/clipFilename.js`)
+
+**Files:**
+- Create: `lib/clipFilename.js`
+- Test: `test/clipFilename.test.js`
+
+**Interfaces:**
+- Produces: `GrayTTSClipFilename.buildClipFilename(text, date)` — pure function, `text` is
+  the spoken selection string, `date` is a JS `Date` instance (caller-supplied so the
+  function stays deterministic/testable, mirroring how `lib/settings.js` takes plain data
+  in and out with no hidden state). Returns a filename string ending in `.webm`. Consumed
+  by `offscreen.js` in Task 2.
+
+- [ ] **Step 1: Write the failing tests**
+
+Create `test/clipFilename.test.js`:
+
+```js
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const {buildClipFilename} = require('../lib/clipFilename.js');
+
+test('buildClipFilename: normal sentence uses first 4 words, slugified', () => {
+    const date = new Date(2026, 7, 13, 14, 22, 1); // 2026-08-13 14:22:01 (month is 0-indexed)
+    const result = buildClipFilename('The quick brown fox jumps over the lazy dog', date);
+    assert.equal(result, 'graytts-clip-2026-08-13-142201-the-quick-brown-fox.webm');
+});
+
+test('buildClipFilename: fewer than 4 words uses all of them', () => {
+    const date = new Date(2026, 0, 5, 9, 5, 0); // 2026-01-05 09:05:00
+    const result = buildClipFilename('Hello world', date);
+    assert.equal(result, 'graytts-clip-2026-01-05-090500-hello-world.webm');
+});
+
+test('buildClipFilename: strips punctuation from words', () => {
+    const date = new Date(2026, 5, 1, 0, 0, 0); // 2026-06-01 00:00:00
+    const result = buildClipFilename('Wait, really?! Yes indeed.', date);
+    assert.equal(result, 'graytts-clip-2026-06-01-000000-wait-really-yes.webm');
+});
+
+test('buildClipFilename: collapses extra whitespace/newlines between words', () => {
+    const date = new Date(2026, 7, 13, 1, 2, 3);
+    const result = buildClipFilename('  Line one\n\nLine   two  ', date);
+    assert.equal(result, 'graytts-clip-2026-08-13-010203-line-one-line-two.webm');
+});
+
+test('buildClipFilename: text that slugifies to nothing (symbols/non-Latin) falls back to timestamp-only', () => {
+    const date = new Date(2026, 7, 13, 14, 22, 1);
+    const result = buildClipFilename('!!! ??? ...', date);
+    assert.equal(result, 'graytts-clip-2026-08-13-142201.webm');
+});
+
+test('buildClipFilename: empty string falls back to timestamp-only', () => {
+    const date = new Date(2026, 7, 13, 14, 22, 1);
+    const result = buildClipFilename('', date);
+    assert.equal(result, 'graytts-clip-2026-08-13-142201.webm');
+});
+
+test('buildClipFilename: pads single-digit month/day/hour/minute/second', () => {
+    const date = new Date(2026, 0, 1, 1, 1, 1); // 2026-01-01 01:01:01
+    const result = buildClipFilename('hi', date);
+    assert.equal(result, 'graytts-clip-2026-01-01-010101-hi.webm');
+});
+```
+
+- [ ] **Step 2: Run the tests to verify they fail**
+
+Run: `npm test`
+Expected: FAIL — `Cannot find module '../lib/clipFilename.js'`
+
+- [ ] **Step 3: Write the implementation**
+
+Create `lib/clipFilename.js`:
+
+```js
+// Pure filename-generation logic for the "Save as audio clip" feature, shared between the
+// extension's offscreen document (loaded as a plain script — no bundler) and the Node
+// test suite under test/. Same dual-export pattern as lib/settings.js: module.exports
+// under Node, attaches to a global under a browser context.
+(function (root) {
+
+function pad(n) {
+    return String(n).padStart(2, '0');
+}
+
+function formatTimestamp(date) {
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}-` +
+        `${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
+}
+
+// Non-Latin/symbol-only text strips down to nothing under this ASCII-only slug — that's
+// fine, buildClipFilename() falls back to a timestamp-only name rather than forcing a
+// transliteration step nobody asked for.
+function slugifyWords(text, maxWords) {
+    return text
+        .trim()
+        .split(/\s+/)
+        .slice(0, maxWords)
+        .map((word) => word.toLowerCase().replace(/[^a-z0-9]+/g, ''))
+        .filter(Boolean)
+        .join('-');
+}
+
+function buildClipFilename(text, date) {
+    const timestamp = formatTimestamp(date);
+    const slug = slugifyWords(text || '', 4);
+    return slug ? `graytts-clip-${timestamp}-${slug}.webm` : `graytts-clip-${timestamp}.webm`;
+}
+
+const api = {buildClipFilename};
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = api;
+} else {
+    root.GrayTTSClipFilename = api;
+}
+
+})(typeof self !== 'undefined' ? self : this);
+```
+
+- [ ] **Step 4: Run the tests to verify they pass**
+
+Run: `npm test`
+Expected: PASS — all 7 tests in `test/clipFilename.test.js` green, plus the existing
+`test/settings.test.js` suite still passing.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add lib/clipFilename.js test/clipFilename.test.js
+git commit -m "Add pure clip-filename generation logic with Node tests"
+```
+
+---
+
+### Task 2: Offscreen capture document (`offscreen.html`, `offscreen.js`)
+
+**Files:**
+- Create: `offscreen.html`
+- Create: `offscreen.js`
+- Modify: `manifest.json` (add `"offscreen"` and `"downloads"` permissions)
+
+**Interfaces:**
+- Consumes: `GrayTTSClipFilename.buildClipFilename(text, date)` from Task 1.
+- Produces: message-based protocol `background.js` (Task 3) sends/receives via
+  `chrome.runtime.sendMessage`/`chrome.runtime.onMessage`:
+  - Inbound to offscreen: `{message: 'start_capture', text}`, `{message: 'stop_capture'}`,
+    `{message: 'abort_capture'}`.
+  - Outbound from offscreen: `{message: 'capture_ready'}`,
+    `{message: 'capture_cancelled'}`, `{message: 'capture_no_audio'}`.
+  - The offscreen document closes itself (`chrome.offscreen.closeDocument()`) at the end
+    of every capture attempt (success, cancel, no-audio, or abort) — `background.js` never
+    needs to close it.
+
+- [ ] **Step 1: Add the new permissions to `manifest.json`**
+
+In `manifest.json`, change:
+
+```json
+  "permissions": [
+    "tts", 
+    "contextMenus",
+    "storage"
+  ],
+```
+
+to:
+
+```json
+  "permissions": [
+    "tts",
+    "contextMenus",
+    "storage",
+    "offscreen",
+    "downloads"
+  ],
+```
+
+- [ ] **Step 2: Create `offscreen.html`**
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+</head>
+<body>
+<!-- No UI — this document exists only to give getDisplayMedia()/MediaRecorder a
+     document context, since background.js's MV3 service worker has none. Never shown. -->
+<script src="lib/clipFilename.js"></script>
+<script src="offscreen.js"></script>
+</body>
+</html>
+```
+
+- [ ] **Step 3: Create `offscreen.js`**
+
+```js
+// offscreen.js — runs in the extension's offscreen document (see manifest.json's
+// "offscreen" permission and chrome.offscreen.createDocument() in background.js).
+// background.js's MV3 service worker has no document/window context of its own, so the
+// getDisplayMedia()/MediaRecorder screen-audio-capture calls this feature needs have to
+// happen here instead — the whole reason this file/document exists.
+
+let mediaRecorder = null;
+let recordedChunks = [];
+let displayStream = null;
+let clipText = '';
+// Set right before mediaRecorder.stop() so the onstop handler knows whether to finalize
+// and download the recording, or discard it (e.g. a mid-capture chrome.tts error).
+let stopPurpose = null; // 'finalize' | 'abort'
+
+chrome.runtime.onMessage.addListener((request) => {
+    if (request.message === 'start_capture') {
+        clipText = request.text || '';
+        startCapture();
+    } else if (request.message === 'stop_capture') {
+        stopPurpose = 'finalize';
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+            mediaRecorder.stop();
+        } else {
+            cleanupAndClose();
+        }
+    } else if (request.message === 'abort_capture') {
+        stopPurpose = 'abort';
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+            mediaRecorder.stop();
+        } else {
+            cleanupAndClose();
+        }
+    }
+});
+
+async function startCapture() {
+    try {
+        displayStream = await navigator.mediaDevices.getDisplayMedia({video: true, audio: true});
+    } catch (err) {
+        // User cancelled/denied the picker.
+        chrome.runtime.sendMessage({message: 'capture_cancelled'});
+        cleanupAndClose();
+        return;
+    }
+
+    const audioTracks = displayStream.getAudioTracks();
+    if (audioTracks.length === 0) {
+        // Picked a specific window/tab without checking "share audio", or the chosen
+        // source doesn't support audio capture at all.
+        chrome.runtime.sendMessage({message: 'capture_no_audio'});
+        cleanupAndClose();
+        return;
+    }
+
+    // Only the audio track matters here — stop the video track immediately rather than
+    // letting it run unused for the whole capture.
+    displayStream.getVideoTracks().forEach((t) => t.stop());
+
+    const audioOnlyStream = new MediaStream(audioTracks);
+    recordedChunks = [];
+    mediaRecorder = new MediaRecorder(audioOnlyStream);
+    mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) recordedChunks.push(e.data);
+    };
+    mediaRecorder.onstop = handleRecorderStop;
+    mediaRecorder.start();
+
+    chrome.runtime.sendMessage({message: 'capture_ready'});
+}
+
+function handleRecorderStop() {
+    if (stopPurpose === 'finalize' && recordedChunks.length > 0) {
+        const blob = new Blob(recordedChunks, {type: 'audio/webm'});
+        const url = URL.createObjectURL(blob);
+        const filename = GrayTTSClipFilename.buildClipFilename(clipText, new Date());
+        chrome.downloads.download({url, filename, saveAs: false}, () => {
+            if (chrome.runtime.lastError) {
+                console.error('GrayTTS clip download failed:', chrome.runtime.lastError.message);
+            }
+            URL.revokeObjectURL(url);
+            cleanupAndClose();
+        });
+    } else {
+        cleanupAndClose();
+    }
+}
+
+function cleanupAndClose() {
+    if (displayStream) {
+        displayStream.getTracks().forEach((t) => t.stop());
+        displayStream = null;
+    }
+    mediaRecorder = null;
+    recordedChunks = [];
+    stopPurpose = null;
+    chrome.offscreen.closeDocument();
+}
+```
+
+- [ ] **Step 4: Syntax-check the new JS file**
+
+Run: `node --check offscreen.js`
+Expected: no output (silent success). This only checks syntax — `chrome`/`navigator`/
+`MediaRecorder` aren't defined under Node, but `node --check` doesn't execute the file, so
+that's fine. Real behavior is verified in Task 4, in a real loaded extension.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add manifest.json offscreen.html offscreen.js
+git commit -m "Add offscreen document for system-audio clip capture"
+```
+
+---
+
+### Task 3: Wire "Save as audio clip" into `background.js`
+
+**Files:**
+- Modify: `background.js`
+
+**Interfaces:**
+- Consumes: `offscreen.js`'s message protocol from Task 2 (`capture_ready`,
+  `capture_cancelled`, `capture_no_audio` inbound; sends `start_capture`, `stop_capture`,
+  `abort_capture`).
+- Produces: extends the existing `speak(text, tabId)` function (used by the context-menu
+  `'read'` handler, the hotkey handler, and the popup's raw `{selection}` message path) to
+  `speak(text, tabId, isClip)` — the new third parameter defaults to falsy, so none of the
+  three existing call sites need to change.
+
+- [ ] **Step 1: Add the second context-menu item**
+
+In `background.js`, `createContextMenu()` currently creates only the `'read'` item. Change:
+
+```js
+function createContextMenu() {
+    chrome.contextMenus.create({
+        id: 'read',
+        title: 'Read with GrayTTS',
+        contexts: ['selection']  // Only show the option when text is selected
+    });
+}
+```
+
+to:
+
+```js
+function createContextMenu() {
+    chrome.contextMenus.create({
+        id: 'read',
+        title: 'Read with GrayTTS',
+        contexts: ['selection']  // Only show the option when text is selected
+    });
+    chrome.contextMenus.create({
+        id: 'save-clip',
+        title: 'Save as audio clip',
+        contexts: ['selection']
+    });
+}
+```
+
+- [ ] **Step 2: Branch the context-menu click handler on `menuItemId`**
+
+Change:
+
+```js
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+    if (extensionEnabled) {
+        speak(info.selectionText, tab && tab.id);
+    }
+});
+```
+
+to:
+
+```js
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+    if (!extensionEnabled) return;
+    if (info.menuItemId === 'save-clip') {
+        startClipCapture(info.selectionText, tab && tab.id);
+    } else {
+        speak(info.selectionText, tab && tab.id);
+    }
+});
+```
+
+- [ ] **Step 3: Add the clip-capture state and orchestration functions**
+
+Add near the top of `background.js`, alongside the existing `extensionEnabled`/
+`ttsSettings` module-level variables:
+
+```js
+// State for the in-progress "Save as audio clip" flow, if any. 'idle' the rest of the
+// time. A second save-clip trigger while this isn't 'idle' is ignored (see
+// startClipCapture) rather than racing two offscreen captures against each other.
+let clipCaptureState = 'idle'; // 'idle' | 'awaiting_capture' | 'capturing'
+let clipCaptureText = null;
+let clipCaptureTabId = null;
+
+const OFFSCREEN_DOCUMENT_PATH = 'offscreen.html';
+
+async function ensureOffscreenDocument() {
+    if (await chrome.offscreen.hasDocument()) return;
+    await chrome.offscreen.createDocument({
+        url: OFFSCREEN_DOCUMENT_PATH,
+        reasons: ['DISPLAY_MEDIA'],
+        justification: 'Record system audio while chrome.tts speaks, to save the current selection as a downloadable audio clip.'
+    });
+}
+
+async function startClipCapture(text, tabId) {
+    if (!text) return;
+    if (clipCaptureState !== 'idle') {
+        showErrorBadge('Clip capture already in progress');
+        return;
+    }
+    clipCaptureState = 'awaiting_capture';
+    clipCaptureText = text;
+    clipCaptureTabId = tabId;
+    await ensureOffscreenDocument();
+    chrome.runtime.sendMessage({message: 'start_capture', text});
+}
+
+function resetClipCaptureState() {
+    clipCaptureState = 'idle';
+    clipCaptureText = null;
+    clipCaptureTabId = null;
+}
+```
+
+- [ ] **Step 4: Handle the offscreen document's reply messages**
+
+In the existing `chrome.runtime.onMessage.addListener` in `background.js`, add three more
+`else if` branches (after the existing `'stop'` branch, before the existing
+`else if (request.selection)` branch):
+
+```js
+    } else if (request.message === 'capture_ready') {
+        if (clipCaptureState !== 'awaiting_capture') return;
+        clipCaptureState = 'capturing';
+        speak(clipCaptureText, clipCaptureTabId, true);
+    } else if (request.message === 'capture_cancelled' || request.message === 'capture_no_audio') {
+        resetClipCaptureState();
+        showErrorBadge(request.message === 'capture_no_audio'
+            ? "No audio in capture — pick Entire Screen + check 'share audio'"
+            : 'Clip capture cancelled');
+```
+
+- [ ] **Step 5: Extend `speak()` to accept and act on `isClip`**
+
+Change the function signature and the `'error'` / end-family branches inside its
+`onEvent` handler. Current:
+
+```js
+function speak(text, tabId) {
+```
+
+becomes:
+
+```js
+function speak(text, tabId, isClip) {
+```
+
+Current `'error'` branch:
+
+```js
+                if (event.type === 'error') {
+                    console.error('chrome.tts error:', event.errorMessage);
+                    showErrorBadge(event.errorMessage);
+                    setSpeechState('idle');
+                    if (tabId !== undefined) sendClearHighlight(tabId);
+```
+
+becomes:
+
+```js
+                if (event.type === 'error') {
+                    console.error('chrome.tts error:', event.errorMessage);
+                    showErrorBadge(event.errorMessage);
+                    setSpeechState('idle');
+                    if (tabId !== undefined) sendClearHighlight(tabId);
+                    if (isClip) {
+                        chrome.runtime.sendMessage({message: 'abort_capture'});
+                        resetClipCaptureState();
+                    }
+```
+
+Current end-family branch:
+
+```js
+                } else if (event.type === 'end' || event.type === 'interrupted' || event.type === 'cancelled') {
+                    setSpeechState('idle');
+                    if (tabId !== undefined) sendClearHighlight(tabId);
+                }
+```
+
+becomes:
+
+```js
+                } else if (event.type === 'end' || event.type === 'interrupted' || event.type === 'cancelled') {
+                    setSpeechState('idle');
+                    if (tabId !== undefined) sendClearHighlight(tabId);
+                    if (isClip) {
+                        chrome.runtime.sendMessage({message: 'stop_capture'});
+                        resetClipCaptureState();
+                    }
+                }
+```
+
+- [ ] **Step 6: Syntax-check `background.js`**
+
+Run: `node --check background.js`
+Expected: no output (silent success).
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add background.js
+git commit -m "Wire Save as audio clip into background.js's context menu and speak() flow"
+```
+
+---
+
+### Task 4: Version bump, changelog, and manual Edge verification
+
+**Files:**
+- Modify: `manifest.json` (`version`, `version_name`)
+- Modify: `README.md` (Version section, Change Notes)
+
+**Interfaces:**
+- None — this task packages up Tasks 1–3 for release and hands verification to Grayson. No
+  new code interfaces.
+
+- [ ] **Step 1: Bump the version**
+
+In `manifest.json`, bump `"version"` from `"1.10"` to `"1.11"`. In the same file, update
+`"version_name"` to `"1.11 (<today's local date> <current local time>)"` — e.g.
+`"1.11 (2026-08-13 16:40)"` — using the actual current local date/time at the moment this
+step is executed, following the existing convention documented in `README.md`'s "Version"
+section (the popup footer reads this value live from the manifest).
+
+- [ ] **Step 2: Update README**
+
+In `README.md`, update the top "Version" line to match the new version/date, and add a new
+bullet at the top of "Change Notes":
+
+```markdown
+- <today's date>: Added **"Save as audio clip"** — a new right-click context-menu item next
+  to "Read with GrayTTS" that records the spoken selection as a downloaded `.webm` file.
+  Since `chrome.tts` hands speech straight to the OS TTS engine with no access to the raw
+  audio buffer, this works by capturing system audio via `getDisplayMedia({audio: true})`
+  while the selection is read aloud — hosted in a new `chrome.offscreen` document (reason
+  `DISPLAY_MEDIA`), since the MV3 service worker in `background.js` has no document context
+  of its own to call `getDisplayMedia`/`MediaRecorder` from. Auto-downloads with a filename
+  like `graytts-clip-2026-08-13-142201-the-quick-brown-fox.webm` (timestamp + first 4 words
+  of the selection) once the reading finishes; falls back to a timestamp-only filename for
+  symbol-only/non-Latin selections. Every failure path (picker cancelled, wrong picker
+  choice, a capture already in progress, a `chrome.tts` error mid-capture) shows the
+  existing toolbar error badge rather than failing silently. Full design:
+  `docs/superpowers/specs/save-audio-clip.md`. Chrome's screen-share picker can't be
+  bypassed or remembered, so every clip save requires clicking through "Entire Screen" +
+  the audio checkbox — a hard platform constraint, not a bug.
+```
+
+- [ ] **Step 3: Commit the version bump**
+
+```bash
+git add manifest.json README.md
+git commit -m "Bump to v1.11: Save as audio clip"
+```
+
+- [ ] **Step 4: Manual verification in a real loaded Edge extension (Grayson, not the implementing agent)**
+
+This step needs a human at a real keyboard — an agentic worker cannot click through
+Chrome's native screen-share picker or confirm real speaker audio. Reload the unpacked
+extension in Edge (`edge://extensions` → reload), then run through all 7 checks from
+`docs/superpowers/specs/save-audio-clip.md`'s testing plan:
+
+1. **Golden path** — select text, right-click → Save as audio clip → Entire Screen + audio
+   → speech plays → a `.webm` file lands in Downloads → play it back, confirm it matches
+   the selected text.
+2. **Cancel path** — trigger it, cancel/deny the picker → confirm no speech happens, the
+   "Clip capture cancelled" badge shows, nothing downloads.
+3. **Wrong picker choice** — pick a specific window, or leave the audio checkbox unchecked
+   → confirm the "No audio in capture" badge, no speech, no download.
+4. **Double-trigger** — fire "Save as audio clip" twice quickly → confirm the second shows
+   "Clip capture already in progress" and is ignored, while the first still completes.
+5. **Highlight/overlay still fire** on the page during a clip capture, same as a normal
+   read.
+6. **Regression check** — plain "Read with GrayTTS" still never shows the screen-share
+   picker.
+7. **Cleanup** — after any capture (success or cancelled), Edge's "you are sharing your
+   screen" indicator bar disappears.
+
+Report back pass/fail per check. Any failure means back to Task 2 or 3 to fix, then
+re-verify — don't mark backlog item 7 done in `BACKLOG.md` until all 7 pass.
+
+---
+
+## Plan self-review notes
+
+- **Spec coverage:** Architecture (Task 3's message flow + Task 2's offscreen document),
+  Components (`offscreen.html`/`offscreen.js` in Task 2, `background.js` changes in Task
+  3, manifest permissions in Task 2), File naming (Task 1), Error handling (Task 3 Step 4
+  + Step 5, all five cases from the spec), Testing plan (Task 4 Step 4, all 7 checks) are
+  each covered by a task above. Deferred items (network TTS provider, clickable overlay
+  toggle) are intentionally out of scope per the spec and not represented here.
+- **Type/interface consistency:** `GrayTTSClipFilename.buildClipFilename(text, date)`
+  (Task 1) is called with `(clipText, new Date())` in `offscreen.js` (Task 2) — matches.
+  The `start_capture` / `stop_capture` / `abort_capture` / `capture_ready` /
+  `capture_cancelled` / `capture_no_audio` message names are used identically in both
+  Task 2 (`offscreen.js`) and Task 3 (`background.js`). `speak(text, tabId, isClip)`'s
+  new third parameter is additive-only — the three pre-existing call sites
+  (`speak(info.selectionText, tab && tab.id)` in the `'read'` menu branch,
+  `speak(response.selection, tab.id)` in the hotkey handler, `speak(request.selection)` in
+  the raw-selection message branch) are untouched and keep working with `isClip` undefined.
