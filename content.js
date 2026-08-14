@@ -14,7 +14,11 @@ function captureSelection() {
     const sel = window.getSelection();
     if (sel && sel.rangeCount > 0 && !sel.isCollapsed) {
         activeRange = sel.getRangeAt(0).cloneRange();
-        return sel.toString();
+        const text = sel.toString();
+        // Clear the native selection now that we've cloned what we need — otherwise it sits
+        // on top of our own read-along highlight/overlay until the user clicks elsewhere.
+        sel.removeAllRanges();
+        return text;
     }
     activeRange = null;
     return '';
