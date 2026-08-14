@@ -73,7 +73,7 @@ test('buildClipFilename: fewer than 4 words uses all of them', () => {
 test('buildClipFilename: strips punctuation from words', () => {
     const date = new Date(2026, 5, 1, 0, 0, 0); // 2026-06-01 00:00:00
     const result = buildClipFilename('Wait, really?! Yes indeed.', date);
-    assert.equal(result, 'graytts-clip-2026-06-01-000000-wait-really-yes.webm');
+    assert.equal(result, 'graytts-clip-2026-06-01-000000-wait-really-yes-indeed.webm');
 });
 
 test('buildClipFilename: collapses extra whitespace/newlines between words', () => {
