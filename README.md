@@ -2,7 +2,7 @@
 Simple Chrome TTS extension
 
 ## Version
-1.13 (2026-08-14 03:07)
+1.14 (2026-08-14 14:44)
 
 Chrome's manifest `version` field only accepts dot-separated integers, so it can't hold a
 timestamp. The human-readable build stamp lives in `manifest.json`'s `version_name` field
@@ -11,6 +11,14 @@ the manifest so it can never go stale on its own. Bump both together on every me
 change: `version` gets a normal bump, `version_name` becomes `"<version> (<local date> <local time>)"`.
 
 ## Change Notes
+- 2026-08-14: **Hotkey moved to `Ctrl+Alt+L`** (suggested default only — existing
+  installs keep whatever's set in `chrome://extensions/shortcuts` until re-bound by hand)
+  for a right-hand-reachable chord. Speech can now be **cancelled** two new ways, both
+  routing through the same `chrome.tts.stop()` path the popup's Stop button already used:
+  pressing the read hotkey again while something is already speaking (always cancels —
+  even if a different selection is active, it never starts reading that instead), and
+  pressing **Escape**, which works from any tab regardless of which one is actually
+  speaking. Full design: `docs/superpowers/specs/hotkey-and-cancel.md`.
 - 2026-08-14: **"Save as audio clip" moved from the right-click context menu to a popup
   button.** Right-click now shows a single "Read with GrayTTS" item — no submenu, since
   Chrome/Edge only nests an extension's items into a flyout when there are 2 or more
