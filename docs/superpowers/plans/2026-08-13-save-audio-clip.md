@@ -199,10 +199,16 @@ git commit -m "Add pure clip-filename generation logic with Node tests"
     `data:audio/webm;...` string, not a `blob:` object URL, since a `blob:` URL created in
     the offscreen document wouldn't resolve in `background.js`'s context, and `chrome.
     runtime.sendMessage` can carry a plain string but not a `Blob`), `{message:
-    'capture_aborted'}` (either an explicit `abort_capture`, or a `stop_capture` that had
-    nothing recorded).
+    'capture_empty'}` (a normal `stop_capture` finalize — `chrome.tts` finished with no
+    error of its own — but nothing was actually recorded, e.g. an extremely short
+    selection), `{message: 'capture_aborted'}` (an explicit `abort_capture`, already
+    explained by whatever `chrome.tts` error triggered it). `capture_empty` and
+    `capture_aborted` are deliberately distinct messages, not one shared "nothing to
+    download" signal — `background.js` needs to badge the former (a successful read that
+    still silently produced no file would violate the North Star) but not the latter
+    (already badged by `speak()`'s own error handling).
   - `offscreen.js` never calls `chrome.offscreen.closeDocument()`. `background.js` closes
-    the document itself upon receiving any of the five outbound messages above — this also
+    the document itself upon receiving any of the six outbound messages above — this also
     means the document is never torn down before its own message has actually been
     delivered (no close-before-delivery race).
 
@@ -278,7 +284,11 @@ chrome.runtime.onMessage.addListener((request) => {
         if (mediaRecorder && mediaRecorder.state !== 'inactive') {
             mediaRecorder.stop();
         } else {
-            chrome.runtime.sendMessage({message: 'capture_aborted'});
+            // A normal finalize with no active recorder to stop — background.js only
+            // sends stop_capture after chrome.tts finished successfully (no error of its
+            // own that would already be badged), so this needs its own signal rather than
+            // reusing capture_aborted (which background.js treats as already-explained).
+            chrome.runtime.sendMessage({message: 'capture_empty'});
             releaseStream();
         }
     } else if (request.message === 'abort_capture') {
@@ -329,22 +339,33 @@ async function startCapture() {
 }
 
 function handleRecorderStop() {
-    if (stopPurpose === 'finalize' && recordedChunks.length > 0) {
-        const blob = new Blob(recordedChunks, {type: 'audio/webm'});
-        const reader = new FileReader();
-        reader.onloadend = () => {
-            // chrome.downloads isn't usable from inside an offscreen document (see header
-            // comment), so hand the finished recording to background.js as a data: URL
-            // string — chrome.runtime messaging can carry a plain string, but a blob:
-            // object URL created here would not resolve in background.js's context, and a
-            // Blob itself can't cross this message boundary either.
-            chrome.runtime.sendMessage({message: 'capture_finished', dataUrl: reader.result});
+    if (stopPurpose === 'finalize') {
+        if (recordedChunks.length > 0) {
+            const blob = new Blob(recordedChunks, {type: 'audio/webm'});
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                // chrome.downloads isn't usable from inside an offscreen document (see
+                // header comment), so hand the finished recording to background.js as a
+                // data: URL string — chrome.runtime messaging can carry a plain string,
+                // but a blob: object URL created here would not resolve in
+                // background.js's context, and a Blob itself can't cross this message
+                // boundary either.
+                chrome.runtime.sendMessage({message: 'capture_finished', dataUrl: reader.result});
+                releaseStream();
+            };
+            reader.readAsDataURL(blob);
+        } else {
+            // A normal finalize (chrome.tts finished with no error of its own — that
+            // path sends abort_capture instead, see the message listener above) but
+            // nothing was actually recorded, e.g. an extremely short selection read so
+            // fast no audio data accumulated. Distinct from capture_aborted, which
+            // background.js treats as already explained elsewhere.
+            chrome.runtime.sendMessage({message: 'capture_empty'});
             releaseStream();
-        };
-        reader.readAsDataURL(blob);
+        }
     } else {
-        // Either an explicit abort, or a finalize with nothing recorded (e.g. chrome.tts
-        // ended near-instantly) — nothing to download.
+        // Explicit abort — background.js's speak() error branch already showed a badge
+        // for whatever chrome.tts error triggered this, so nothing more to say here.
         chrome.runtime.sendMessage({message: 'capture_aborted'});
         releaseStream();
     }
@@ -388,10 +409,13 @@ git commit -m "Add offscreen document for system-audio clip capture"
 **Interfaces:**
 - Consumes: `offscreen.js`'s message protocol from Task 2 — receives `capture_ready`,
   `capture_cancelled`, `capture_no_audio`, `capture_finished` (carries `dataUrl`),
-  `capture_aborted`; sends `start_capture`, `stop_capture`, `abort_capture`. Also consumes
+  `capture_empty`, `capture_aborted`; sends `start_capture`, `stop_capture`,
+  `abort_capture`. Also consumes
   `GrayTTSClipFilename.buildClipFilename(text, date)` from Task 1 (filename generation
   happens here now, not in `offscreen.js` — see Task 2's note on offscreen documents only
-  supporting `chrome.runtime`).
+  supporting `chrome.runtime`). `capture_empty` (a normal finalize that recorded nothing,
+  e.g. an extremely short selection) gets its own error badge here — it's distinct from
+  `capture_aborted` (an explicit abort, already badged by `speak()`'s own error handling).
 - Produces: extends the existing `speak(text, tabId)` function (used by the context-menu
   `'read'` handler, the hotkey handler, and the popup's raw `{selection}` message path) to
   `speak(text, tabId, isClip)` — the new third parameter defaults to falsy, so none of the
@@ -479,9 +503,9 @@ Add near the top of `background.js`, alongside the existing `extensionEnabled`/
 // time. A second save-clip trigger while this isn't 'idle' is ignored (see
 // startClipCapture) rather than racing two offscreen captures against each other.
 // 'finishing' covers the gap between telling the offscreen document to stop/abort and it
-// actually confirming that back (capture_finished/capture_aborted) — without this state,
-// a save-clip trigger during that gap could race a second offscreen document into
-// existence before the first one's teardown message arrives.
+// actually confirming that back (capture_finished/capture_empty/capture_aborted) —
+// without this state, a save-clip trigger during that gap could race a second offscreen
+// document into existence before the first one's teardown message arrives.
 let clipCaptureState = 'idle'; // 'idle' | 'awaiting_capture' | 'capturing' | 'finishing'
 let clipCaptureText = null;
 let clipCaptureTabId = null;
@@ -518,8 +542,20 @@ async function startClipCapture(text, tabId) {
     clipCaptureState = 'awaiting_capture';
     clipCaptureText = text;
     clipCaptureTabId = tabId;
-    await ensureOffscreenDocument();
-    chrome.runtime.sendMessage({message: 'start_capture'});
+    try {
+        await ensureOffscreenDocument();
+        chrome.runtime.sendMessage({message: 'start_capture'});
+    } catch (err) {
+        // ensureOffscreenDocument()/createDocument() rejecting is rare, but the
+        // context-menu click handler below calls startClipCapture() without awaiting or
+        // catching it — an uncaught rejection here would wedge clipCaptureState at
+        // 'awaiting_capture' forever (every later save-clip click would hit the guard
+        // above with no way out, since this failure never reaches the 'idle' state the
+        // self-healing in ensureOffscreenDocument() depends on).
+        console.error('GrayTTS clip capture failed to start:', err);
+        showErrorBadge('Clip capture failed to start');
+        resetClipCaptureState();
+    }
 }
 
 function resetClipCaptureState() {
@@ -573,6 +609,11 @@ In the existing `chrome.runtime.onMessage.addListener` in `background.js`, add t
             chrome.offscreen.closeDocument();
         });
         resetClipCaptureState();
+    } else if (request.message === 'capture_empty') {
+        if (clipCaptureState !== 'finishing') { chrome.offscreen.closeDocument(); return; }
+        resetClipCaptureState();
+        chrome.offscreen.closeDocument();
+        showErrorBadge('Clip too short to save — nothing was recorded');
     } else if (request.message === 'capture_aborted') {
         chrome.offscreen.closeDocument();
         resetClipCaptureState();
@@ -640,8 +681,8 @@ becomes:
 ```
 
 Note: neither branch calls `resetClipCaptureState()` directly — that only happens once
-`capture_finished`/`capture_aborted`/`capture_cancelled`/`capture_no_audio` actually
-arrives back from the offscreen document (Step 5). Resetting immediately here, before the
+`capture_finished`/`capture_empty`/`capture_aborted`/`capture_cancelled`/`capture_no_audio`
+actually arrives back from the offscreen document (Step 5). Resetting immediately here, before the
 offscreen document has confirmed it's actually done, would let a second "Save as audio
 clip" click slip through `startClipCapture()`'s `clipCaptureState !== 'idle'` guard and
 race a brand-new offscreen document into existence while the old one is still tearing down
@@ -713,7 +754,7 @@ git commit -m "Bump to v1.11: Save as audio clip"
 
 This step needs a human at a real keyboard — an agentic worker cannot click through
 Chrome's native screen-share picker or confirm real speaker audio. Reload the unpacked
-extension in Edge (`edge://extensions` → reload), then run through all 7 checks from
+extension in Edge (`edge://extensions` → reload), then run through all 8 checks from
 `docs/superpowers/specs/save-audio-clip.md`'s testing plan:
 
 1. **Golden path** — select text, right-click → Save as audio clip → Entire Screen + audio
@@ -731,9 +772,13 @@ extension in Edge (`edge://extensions` → reload), then run through all 7 check
    picker.
 7. **Cleanup** — after any capture (success or cancelled), Edge's "you are sharing your
    screen" indicator bar disappears.
+8. **Empty recording** — Save as audio clip on a very short selection (a word or two) →
+   confirm either a valid (if brief) `.webm` downloads, or the "Clip too short to save"
+   badge shows — either is acceptable, but silence (no file, no badge, no explanation) is
+   not.
 
 Report back pass/fail per check. Any failure means back to Task 2 or 3 to fix, then
-re-verify — don't mark backlog item 7 done in `BACKLOG.md` until all 7 pass.
+re-verify — don't mark backlog item 7 done in `BACKLOG.md` until all 8 pass.
 
 ---
 
@@ -742,15 +787,16 @@ re-verify — don't mark backlog item 7 done in `BACKLOG.md` until all 7 pass.
 - **Spec coverage:** Architecture (Task 3's message flow + Task 2's offscreen document),
   Components (`offscreen.html`/`offscreen.js` in Task 2, `background.js` changes in Task
   3, manifest permissions in Task 2), File naming (Task 1), Error handling (Task 3 Step 4
-  + Step 5, all five cases from the spec), Testing plan (Task 4 Step 4, all 7 checks) are
+  + Step 5, error cases from the spec plus the two added during Task 3's review), Testing
+  plan (Task 4 Step 4, all 8 checks) are
   each covered by a task above. Deferred items (network TTS provider, clickable overlay
   toggle) are intentionally out of scope per the spec and not represented here.
 - **Type/interface consistency:** `GrayTTSClipFilename.buildClipFilename(text, date)`
   (Task 1) is called with `(clipCaptureText, new Date())` in `background.js` (Task 3, via
   the new `importScripts('lib/settings.js', 'lib/clipFilename.js')`) — matches. The
   `start_capture` / `stop_capture` / `abort_capture` / `capture_ready` /
-  `capture_cancelled` / `capture_no_audio` / `capture_finished` / `capture_aborted`
-  message names are used identically in both Task 2 (`offscreen.js`) and Task 3
+  `capture_cancelled` / `capture_no_audio` / `capture_finished` / `capture_empty` /
+  `capture_aborted` message names are used identically in both Task 2 (`offscreen.js`) and Task 3
   (`background.js`). `speak(text, tabId, isClip)`'s new third parameter is additive-only —
   the three pre-existing call sites (`speak(info.selectionText, tab && tab.id)` in the
   `'read'` menu branch, `speak(response.selection, tab.id)` in the hotkey handler,
@@ -779,3 +825,17 @@ re-verify — don't mark backlog item 7 done in `BACKLOG.md` until all 7 pass.
   document, which self-heals this on the very next attempt. A narrower residual risk (the
   one interrupted attempt itself silently produces nothing) remains and is documented as
   an accepted, scope-appropriate tradeoff rather than fixed with full state persistence.
+- **Third correction (made during Task 3's formal task review):** the reviewer found two
+  Important issues in the (then-current) code, both now fixed: (1) `capture_aborted` was
+  used for two different situations — an explicit abort (already badged by `speak()`'s
+  error handling) and a normal finalize that happened to record nothing (e.g. an
+  extremely short selection) — with no badge for the second, a real North Star violation
+  reachable on any near-instant read, not just the accepted SW-respawn edge case. Split
+  into two distinct outbound messages, `capture_aborted` (unchanged meaning) and
+  `capture_empty` (new — gets its own "Clip too short to save" badge). (2)
+  `startClipCapture()` awaited `ensureOffscreenDocument()` with no try/catch, and its only
+  caller (the context-menu click handler) doesn't await/catch it either — a rejection
+  there would wedge `clipCaptureState` at `'awaiting_capture'` forever, bypassing the
+  self-healing fix above entirely (that only triggers once state reaches `'idle'`). Wrapped
+  the `ensureOffscreenDocument()` + `sendMessage` calls in try/catch, resetting state and
+  badging on failure.

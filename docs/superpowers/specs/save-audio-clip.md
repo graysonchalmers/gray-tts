@@ -113,6 +113,14 @@ Star of never failing silently:
 - **Second "Save as audio clip" trigger while one is already running** → ignored, with a
   quick badge ("Clip capture already in progress") rather than racing two captures.
 - **`chrome.downloads.download()` fails** (disk full, permissions) → badged the same way.
+- **A normal, successful read finalizes with nothing actually recorded** (e.g. an
+  extremely short selection) → distinct from an explicit abort (which is already
+  explained by whatever error triggered it) — badged as "Clip too short to save" rather
+  than silently producing nothing, since a successful `chrome.tts` read with no error of
+  its own would otherwise leave no signal that the save itself failed.
+- **`ensureOffscreenDocument()`/`chrome.offscreen.createDocument()` itself rejects**
+  (rare) → badged as "Clip capture failed to start" and state resets, rather than
+  leaving every subsequent "Save as audio clip" click permanently blocked.
 
 ## Testing plan
 
@@ -133,6 +141,9 @@ behavior. Built directly in the extension, verified manually in a loaded Edge:
 6. **Regression check** — plain "Read with GrayTTS" still never shows a picker.
 7. **Cleanup** — after any capture (success or cancel), Edge's "you are sharing your
    screen" indicator bar actually disappears.
+8. **Empty recording** — Save as audio clip on a very short selection (a word or two) →
+   confirm either a valid (if brief) file downloads, or the "Clip too short to save"
+   badge shows — either is fine, silence is not.
 
 ## Out of scope / deferred
 
