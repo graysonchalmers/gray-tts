@@ -1,6 +1,6 @@
 # 🧭 Session Handoff — Tool-GrayTTS (GrayTTS)
 
-_Last updated: 2026-08-12/13 (part 10) CT_
+_Last updated: 2026-08-13 (part 12) CT_
 
 ## 🧭 North Star & Backlog
 Moved to [`BACKLOG.md`](BACKLOG.md) — that's now the durable home for the roadmap so it
@@ -8,8 +8,26 @@ survives session-log churn here. Check it before starting new feature work. **No
 now Grayson-confirmed** (was previously just proposed).
 
 ## 🎯 Current state
-Version **1.10** (commit `532bc60`, pushed, level with `origin/main`). Since the last full
-handoff update, three more versions shipped:
+Version **1.11** (commit `817c3b2` in the merge, on `main`, **not yet pushed** — 22 commits
+ahead of `origin/main`). Backlog item 7 (**save spoken output to an audio file**) is built:
+a new "Save as audio clip" right-click context-menu item records the spoken selection as a
+downloaded `.webm` via `getDisplayMedia({audio:true})` system-audio capture, hosted in a new
+`chrome.offscreen` document since the MV3 service worker has no document context of its own
+to call `getDisplayMedia`/`MediaRecorder` from. Full design: `docs/superpowers/specs/save-audio-clip.md`.
+Built via `brainstorming` → spec → `writing-plans` → `subagent-driven-development` (4 tasks,
+each individually reviewed, plus a clean final whole-branch review with one fix round already
+merged) → merged to `main` on Grayson's explicit call, ahead of manual verification (see below).
+
+**⚠️ NOT YET EDGE-VERIFIED.** Task 4's 8-point manual checklist (golden path, cancel, wrong
+picker choice, double-trigger, highlight/overlay still fire, regression check, cleanup,
+empty-recording badge) has not been run — needs a real loaded Edge extension and clicking
+through Chrome's native screen-share picker, which only Grayson can do. One specific risk
+flagged for check 1: `offscreen.js` stops the video track immediately after obtaining the
+display stream (added after the original feasibility spike, which didn't do this) — untested
+whether that could also kill the audio capture. If check 1 fails silently/empty, that line is
+the first suspect.
+
+Since the last full handoff update, three more versions shipped before this one:
 - **v1.8** (`6555f3c`) — the **word overlay** got built per the locked design below: bottom-center
   Shadow-DOM box showing the current spoken word, independently toggleable alongside the in-page
   highlight via two new popup checkboxes. Spec landed at `docs/superpowers/specs/word-overlay.md`.
@@ -68,20 +86,25 @@ Current version: 1.7 (2026-08-12 05:20, commit `52bd64c`, pushed). Grayson confi
 highlighting all work in a real loaded Edge extension.
 
 ## 📌 Where we stopped
-Edge-verification of v1.8/v1.9/v1.10 is done and passed (see above). Backlog items 1–6 and 8
-are all done and verified; only item 7 (save spoken output to an audio file) remains, and it's
-unscoped. North Star reconfirmed as still the right frame — no changes requested.
+v1.11 (save-as-audio-clip) is merged to `main`, code-complete and reviewed, but **not
+Edge-verified and not pushed**. That's the exact resume point: load the unpacked extension
+in Edge and run the 8-point manual checklist in `docs/superpowers/specs/save-audio-clip.md`'s
+Testing plan section.
 
 ## ▶️ Next concrete step
-Scope **backlog item 7** (save-to-audio) via `brainstorming` — it's not a small add, since
-`chrome.tts` hands speech straight to the OS engine with no access to the raw audio buffer.
-Two real directions to weigh (see `BACKLOG.md` item 7 for detail): an additive/opt-in
-network-based TTS provider used only for the save path, or capturing system audio via
-`getDisplayMedia({audio:true})` while it plays. Alternatives:
+Run the **manual Edge verification** for v1.11 (8 checks — see Current state above and the
+spec's Testing plan). Once all 8 pass:
+1. Mark backlog item 7 done in `BACKLOG.md`.
+2. Push `main` to `origin/main` (22 commits pending, all local per house rule).
+
+If a check fails, fix it and re-verify before pushing — don't push unverified TTS-extension
+code. Alternatives if you'd rather not do the Edge pass right now:
 - Revisit the "many voices sound the same" question (low-priority, only if it's bugging him).
 - Close out the still-unverified V: backup first run (see open questions) if V: is reachable.
 - Check whether `Tool-GrayTTS`'s `chrome.tts` now sees the NaturalVoiceSAPIAdapter voices the
   desktop companion project picked up (flagged as unconfirmed in that project's memory).
+- Scope backlog item 9 (clickable word-overlay pause/play toggle, raised this session) via
+  `brainstorming` — not started, no design yet.
 
 ### Word-overlay design (locked 2026-08-12; since built in v1.8 — kept for reference)
 - **Settings:** two independent checkboxes in the popup — "Highlight word on page" and "Show
@@ -111,6 +134,8 @@ network-based TTS provider used only for the save path, or capturing system audi
   both checkboxes independently, plus confirming Preview stays unaffected.
 
 ## ❓ Open questions
+- **v1.11 Edge verification** — see Next concrete step above. Nothing else should be built
+  on top of the save-audio-clip feature until this passes.
 - **What prompted v1.10?** (`532bc60` — Pause/Stop button reorder + attribution text.) No
   session log entry exists for it, and it's still unconfirmed whether it was fallout from the
   v1.8/v1.9 Edge check or a separate unlogged session — low-stakes now that it's verified
@@ -130,12 +155,55 @@ network-based TTS provider used only for the save path, or capturing system audi
   test harness.
 
 ## 🗂️ Changed this session
-- Branch: `main` · Files: `HANDOFF.md`, `BACKLOG.md` (recorded Edge-verification pass)
-- No code changes — docs-only.
+- Branch: `main` (via merged-and-deleted `save-audio-clip`) · Files: `background.js`,
+  `offscreen.html` (new), `offscreen.js` (new), `lib/clipFilename.js` (new),
+  `test/clipFilename.test.js` (new), `manifest.json`, `README.md`, `BACKLOG.md`,
+  `docs/superpowers/specs/save-audio-clip.md` (new), `docs/superpowers/plans/2026-08-13-save-audio-clip.md` (new)
+- Built backlog item 7 end-to-end: `brainstorming` (scoped the design, ran a feasibility
+  spike confirming `getDisplayMedia` captures SAPI voice audio) → spec → `writing-plans` →
+  `subagent-driven-development` (4 tasks in worktree `save-audio-clip`, each reviewed; the
+  review process itself caught and fixed real bugs — see session log) → clean final
+  whole-branch review (1 fix round) → merged to `main` on Grayson's explicit "merge now"
+  call, ahead of Edge verification.
+- Also logged a new, unscoped backlog item 9 (clickable word-overlay pause/play toggle).
 
 ---
 
 ## 🕓 Session log
+### 2026-08-13 (part 12) — Built and merged save-as-audio-clip (backlog item 7)
+- Picked up from part 11: repo clean, backlog item 7 was the agreed next step.
+- Ran `brainstorming` to scope item 7. Grayson picked **system audio capture** over a
+  network TTS provider (deferred as a future item — logged in `BACKLOG.md`). Built and ran
+  a throwaway feasibility spike (`audio-capture-spike.html`, project root, not committed)
+  before committing to the design — confirmed `getDisplayMedia({audio:true})` with "Entire
+  Screen + share system audio" actually captures Windows SAPI voice audio. Also logged a
+  new backlog item 9 (clickable word-overlay pause/play toggle) raised mid-brainstorm,
+  explicitly deferred rather than folded into this design.
+- Wrote and committed the spec (`docs/superpowers/specs/save-audio-clip.md`): a new "Save
+  as audio clip" context-menu item, hosted in a `chrome.offscreen` document since
+  `background.js`'s MV3 service worker has no document context to call
+  `getDisplayMedia`/`MediaRecorder` from.
+- Ran `writing-plans` → 4-task plan (`docs/superpowers/plans/2026-08-13-save-audio-clip.md`).
+- Ran `subagent-driven-development` in worktree `.worktrees/save-audio-clip` (branch
+  `save-audio-clip`, deleted after merge): Task 1 (`lib/clipFilename.js` + Node tests, 19/19
+  passing), Task 2 (`offscreen.html`/`offscreen.js`), Task 3 (wire into `background.js`),
+  Task 4 (version bump to 1.11, README changelog, commit — manual Edge verification handed
+  to Grayson, not agent-executable). Task review caught and fixed real bugs before they ever
+  reached Edge: offscreen documents can only use `chrome.runtime` (not `chrome.downloads`/
+  `chrome.offscreen` themselves — moved that ownership to `background.js`), a stale offscreen
+  document could wedge all future captures after an MV3 service-worker respawn mid-picker
+  (self-heals now via close-then-recreate), a successful-but-empty recording (e.g. an
+  extremely short selection) produced no badge (split into a distinct `capture_empty`
+  message), and an `ensureOffscreenDocument()` rejection could wedge state forever (now
+  caught). The final whole-branch review found one more real gap — clicking "Stop sharing"
+  on Chrome's own screen-share indicator mid-capture skipped every guard and silently reset
+  state while `chrome.tts` kept talking — fixed in one more round (all clean after).
+- Merged `save-audio-clip` → `main` on Grayson's explicit call ("Merge to main locally
+  now"), **before** Edge verification — flagged that gap clearly first. 19/19 tests pass on
+  the merged result. Worktree and branch cleaned up.
+- **Not pushed** (22 commits ahead of `origin/main`) — per house rule, holding until
+  Grayson runs the manual Edge verification pass. See Next concrete step above.
+
 ### 2026-08-13 (part 11) — Pickup, Edge verification confirmed, North Star reconfirmed
 - Ran `pickup`: repo clean and level with `origin/main`, `HANDOFF.md` already caught up to
   v1.10 (part 10's work) — no drift this time.
