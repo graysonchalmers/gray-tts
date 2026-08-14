@@ -1,6 +1,6 @@
 # 🧭 Session Handoff — Tool-GrayTTS (GrayTTS)
 
-_Last updated: 2026-08-13 (part 12) CT_
+_Last updated: 2026-08-14 03:45 CT_
 
 ## 🧭 North Star & Backlog
 Moved to [`BACKLOG.md`](BACKLOG.md) — that's now the durable home for the roadmap so it
@@ -8,26 +8,69 @@ survives session-log churn here. Check it before starting new feature work. **No
 now Grayson-confirmed** (was previously just proposed).
 
 ## 🎯 Current state
-Version **1.11** (commit `817c3b2` in the merge, on `main`, **not yet pushed** — 22 commits
-ahead of `origin/main`). Backlog item 7 (**save spoken output to an audio file**) is built:
-a new "Save as audio clip" right-click context-menu item records the spoken selection as a
-downloaded `.webm` via `getDisplayMedia({audio:true})` system-audio capture, hosted in a new
-`chrome.offscreen` document since the MV3 service worker has no document context of its own
-to call `getDisplayMedia`/`MediaRecorder` from. Full design: `docs/superpowers/specs/save-audio-clip.md`.
-Built via `brainstorming` → spec → `writing-plans` → `subagent-driven-development` (4 tasks,
-each individually reviewed, plus a clean final whole-branch review with one fix round already
-merged) → merged to `main` on Grayson's explicit call, ahead of manual verification (see below).
+Version **1.13**, on `main`, **pushed and level with `origin/main`** (`57935d8`). Backlog
+items 1–9 are all built and Edge-verified — nothing outstanding on the pending-verification
+front for the first time in several sessions. This session (2026-08-14) covered three
+things: verifying + pushing the two versions left over from last session (v1.11, v1.12),
+building and shipping backlog item 9 (v1.12), and a live-debugging + two-more-features pass
+(v1.13) prompted by Grayson actually using the extension day-to-day.
 
-**⚠️ NOT YET EDGE-VERIFIED.** Task 4's 8-point manual checklist (golden path, cancel, wrong
-picker choice, double-trigger, highlight/overlay still fire, regression check, cleanup,
-empty-recording badge) has not been run — needs a real loaded Edge extension and clicking
-through Chrome's native screen-share picker, which only Grayson can do. One specific risk
-flagged for check 1: `offscreen.js` stops the video track immediately after obtaining the
-display stream (added after the original feasibility spike, which didn't do this) — untested
-whether that could also kill the audio capture. If check 1 fails silently/empty, that line is
-the first suspect.
+**v1.11 (save-as-audio-clip)** — Edge-verified 2026-08-14, all 8 checks passed. The one
+flagged risk (video-track-stop killing audio capture) turned out fine.
 
-Since the last full handoff update, three more versions shipped before this one:
+**v1.12 (clickable word-overlay pause/play, backlog item 9)** — built this session via the
+full pipeline (`brainstorming` → spec → `writing-plans` → `subagent-driven-development`, 3
+tasks + a final whole-branch review that caught and fixed a real Critical bug: the
+`currentSpeakingTabId` tracker used `tabId` alone to decide when to clear itself, which
+can't tell two utterances in the *same* tab apart — re-reading text mid-speech silently
+broke the overlay's pause relay. Fixed with a per-utterance sequence token
+(`speakSeq`/`mySeq`) instead. Also added a guard so pausing can't corrupt an in-progress
+"Save as audio clip" recording. Edge-verified 2026-08-14, all 9 checks passed.
+
+**v1.13 (this session, live-debugging-driven)** — after v1.11/v1.12 verified, Grayson hit a
+real bug testing on a project he's actually using GrayTTS with
+(`osmbench.streamlit.app/field-journal`): the read-along highlight and word overlay didn't
+appear on that page, though audio still played. **Root cause:** that Streamlit page renders
+its actual content inside a same-origin `<iframe>`, and `manifest.json`'s content script
+never set `all_frames: true` — so `content.js` only ever ran in the top frame, never where
+the real selection lived. Fixed with one line (`"all_frames": true`); `chrome.tabs.sendMessage`
+already broadcasts to all frames by default, so no other code needed to change. This was a
+pre-existing gap from the original v1.7/v1.8 work, not something earlier this session
+introduced — it just took a real iframed page to surface it.
+
+While verifying that fix, Grayson raised two more wanted changes, both built and shipped
+this session:
+1. **Clear the native page selection when a read starts** — previously the browser's own
+   blue selection sat on top of GrayTTS's own highlight/overlay until you clicked elsewhere.
+   `content.js`'s `captureSelection()` now clears it once the Range is cloned.
+2. **Simplify the right-click menu to one item** — "Save as audio clip" used to force
+   Chrome/Edge to nest both context-menu items into a "GrayTTS >" submenu. It moved to a new
+   popup button ("🎙 Save as audio clip") that grabs the active tab's current selection the
+   same way the hotkey already does; right-click is now a single "Read with GrayTTS" click.
+
+**A whole-branch review of change #2 caught something bigger than its own scope**: the
+naive fix for #1 (clearing selection on `get_selection`) was *also* silently breaking
+read-along highlight/overlay for every hotkey-triggered read — not just the new popup
+button — because `captureSelection()` was called twice per hotkey read (once to fetch text,
+once to capture the Range) and the first call's clear destroyed what the second call
+needed. Root-cause fixed by splitting into a report-only read (`captureSelection()`, no side
+effects) and a capture-and-clear (`captureAndClearSelectionRange()`, the one point
+guaranteed to run right before speech actually starts, for every trigger path). This also
+fixed the reviewer's original finding for free (a cancelled clip-capture picker no longer
+clears the selection either, since that point is never reached).
+
+All of v1.13 is Edge-verified (2026-08-14, alongside the v1.11/v1.12 re-check) and pushed.
+
+Backlog item 8 (desktop companion, `Util-GrayTTS-Desktop`) got a note this session too:
+Grayson explicitly wants all of this session's browser-side improvements (especially the
+clickable pause/play toggle) ported there eventually — not started, not scoped, logged in
+that project's own memory file. Desktop's overlay is architecturally different (a Win32 GUI
+window, not a webpage element) and has no pause/resume concept at all today, so porting
+means designing real pause/resume there first — bigger than the browser side was. That
+project also still has an **unfixed cloud-voice word-fragmentation bug** flagged as
+higher-priority than the port (see that project's own `HANDOFF.md`/memory).
+
+Since the last full handoff update, three more versions shipped before v1.11-v1.13:
 - **v1.8** (`6555f3c`) — the **word overlay** got built per the locked design below: bottom-center
   Shadow-DOM box showing the current spoken word, independently toggleable alongside the in-page
   highlight via two new popup checkboxes. Spec landed at `docs/superpowers/specs/word-overlay.md`.
@@ -86,25 +129,21 @@ Current version: 1.7 (2026-08-12 05:20, commit `52bd64c`, pushed). Grayson confi
 highlighting all work in a real loaded Edge extension.
 
 ## 📌 Where we stopped
-v1.11 (save-as-audio-clip) is merged to `main`, code-complete and reviewed, but **not
-Edge-verified and not pushed**. That's the exact resume point: load the unpacked extension
-in Edge and run the 8-point manual checklist in `docs/superpowers/specs/save-audio-clip.md`'s
-Testing plan section.
+Clean state: everything built this session (v1.11, v1.12, v1.13) is Edge-verified and
+pushed. `main` and `origin/main` are level at `57935d8`. No code is mid-flight.
 
 ## ▶️ Next concrete step
-Run the **manual Edge verification** for v1.11 (8 checks — see Current state above and the
-spec's Testing plan). Once all 8 pass:
-1. Mark backlog item 7 done in `BACKLOG.md`.
-2. Push `main` to `origin/main` (22 commits pending, all local per house rule).
-
-If a check fails, fix it and re-verify before pushing — don't push unverified TTS-extension
-code. Alternatives if you'd rather not do the Edge pass right now:
+No forced next step — the backlog (`BACKLOG.md`) is fully caught up (items 1–9 all done and
+verified). Pick based on what Grayson wants next:
+- **Port this session's improvements to the desktop companion** (`Util-GrayTTS-Desktop`) —
+  the thing Grayson explicitly said he wants next, but hasn't asked to start yet. Needs its
+  own `brainstorming` session in that project. Fix its known cloud-voice word-fragmentation
+  bug first (see that project's `HANDOFF.md`) — don't build pause/resume on an overlay
+  that's already dropping words.
 - Revisit the "many voices sound the same" question (low-priority, only if it's bugging him).
 - Close out the still-unverified V: backup first run (see open questions) if V: is reachable.
 - Check whether `Tool-GrayTTS`'s `chrome.tts` now sees the NaturalVoiceSAPIAdapter voices the
   desktop companion project picked up (flagged as unconfirmed in that project's memory).
-- Scope backlog item 9 (clickable word-overlay pause/play toggle, raised this session) via
-  `brainstorming` — not started, no design yet.
 
 ### Word-overlay design (locked 2026-08-12; since built in v1.8 — kept for reference)
 - **Settings:** two independent checkboxes in the popup — "Highlight word on page" and "Show
@@ -134,8 +173,15 @@ code. Alternatives if you'd rather not do the Edge pass right now:
   both checkboxes independently, plus confirming Preview stays unaffected.
 
 ## ❓ Open questions
-- **v1.11 Edge verification** — see Next concrete step above. Nothing else should be built
-  on top of the save-audio-clip feature until this passes.
+- **Desktop-companion port** — Grayson wants this session's browser-side improvements
+  (clickable overlay pause/play especially) mirrored in `Util-GrayTTS-Desktop`, explicitly
+  confirmed but not yet scoped or started. See Next concrete step above.
+- **Selection-clearing edge case (out-of-scope observation from the last review, not
+  blocking):** the page selection could theoretically change between a popup save-clip's
+  `get_selection` snapshot (used for the spoken/clipped text) and the later
+  `capture_selection_range` call that builds the highlight Range, if the user alters the
+  selection while the screen-share picker dialog is open. Pre-existing two-call structure,
+  not introduced by this session's fix — flagged for awareness only.
 - **What prompted v1.10?** (`532bc60` — Pause/Stop button reorder + attribution text.) No
   session log entry exists for it, and it's still unconfirmed whether it was fallout from the
   v1.8/v1.9 Edge check or a separate unlogged session — low-stakes now that it's verified
@@ -155,21 +201,77 @@ code. Alternatives if you'd rather not do the Edge pass right now:
   test harness.
 
 ## 🗂️ Changed this session
-- Branch: `main` (via merged-and-deleted `save-audio-clip`) · Files: `background.js`,
-  `offscreen.html` (new), `offscreen.js` (new), `lib/clipFilename.js` (new),
-  `test/clipFilename.test.js` (new), `manifest.json`, `README.md`, `BACKLOG.md`,
-  `docs/superpowers/specs/save-audio-clip.md` (new), `docs/superpowers/plans/2026-08-13-save-audio-clip.md` (new)
-- Built backlog item 7 end-to-end: `brainstorming` (scoped the design, ran a feasibility
-  spike confirming `getDisplayMedia` captures SAPI voice audio) → spec → `writing-plans` →
-  `subagent-driven-development` (4 tasks in worktree `save-audio-clip`, each reviewed; the
-  review process itself caught and fixed real bugs — see session log) → clean final
-  whole-branch review (1 fix round) → merged to `main` on Grayson's explicit "merge now"
-  call, ahead of Edge verification.
-- Also logged a new, unscoped backlog item 9 (clickable word-overlay pause/play toggle).
+- Branch: `main` throughout (two feature branches, `clickable-overlay-pause` and
+  `relocate-save-clip`, each built in a `.worktrees/` worktree and merged+deleted after a
+  clean final review). Files: `background.js`, `content.js`, `manifest.json`, `popup.html`,
+  `popup.js`, `README.md`, `BACKLOG.md`, plus new specs/plans under `docs/superpowers/`.
+- Verified and pushed v1.11 (save-as-audio-clip, left over from last session).
+- Built v1.12 end-to-end (backlog item 9, clickable word-overlay pause/play):
+  `brainstorming` → spec → `writing-plans` → `subagent-driven-development` (3 tasks + final
+  whole-branch review, 1 fix round — caught and fixed a real Critical same-tab-reread race).
+  Merged to `main`, Edge-verified, pushed.
+- Debugged and fixed the iframe/`all_frames` bug live (Grayson hit it testing on a real
+  Streamlit project) — one-line `manifest.json` fix, root-caused via the Browser pane
+  inspecting the actual failing page's DOM rather than guessing.
+- Built two more small features via the same `brainstorming` → spec → plan →
+  `subagent-driven-development` pipeline: clearing the native selection on read, and
+  relocating "Save as audio clip" to a popup button (single-item context menu). The second
+  one's final review caught that the first one's naive fix was also breaking hotkey-read
+  highlighting — root-caused and fixed together as v1.13.
+- Logged a durable memory note in `Util-GrayTTS-Desktop`'s own project memory: Grayson wants
+  this session's improvements ported there, not yet started.
 
 ---
 
 ## 🕓 Session log
+### 2026-08-14 (part 13) — v1.11/v1.12 verified+pushed, backlog item 9 built, live-debugging pass (v1.13)
+- Picked up from part 12: v1.11 merged but unverified/unpushed, backlog item 9 raised but
+  unscoped. Grayson asked specifically about the clickable overlay pause/play idea.
+- Ran `brainstorming` → spec (`docs/superpowers/specs/clickable-overlay-pause.md`) →
+  `writing-plans` → `subagent-driven-development` for backlog item 9. Built in worktree
+  `clickable-overlay-pause`: 3 tasks (background.js relay via a `currentSpeakingTabId`
+  tracker + `speakSeq` sequence token, content.js click handler + red/white state sync,
+  version bump to 1.12). Final whole-branch review caught a real Critical bug — the
+  original `tabId`-based clear guard couldn't tell two utterances in the same tab apart, so
+  re-reading text broke the overlay relay permanently — fixed with the sequence token.
+  Also added a guard against pausing mid-"Save as audio clip" capture. Merged to `main`.
+- Grayson confirmed all v1.11 (8 checks) and v1.12 (9 checks) Edge-verification checks
+  passed. Pushed all pending commits to `origin/main` on explicit request ("push it
+  anyway" — confirmed he'd already run the checks despite the push happening first in the
+  conversation's literal order).
+- Grayson then reported a real bug found through actual use: highlight/overlay not
+  appearing on `osmbench.streamlit.app/field-journal` (one of his own projects), audio
+  still working. Used `superpowers:systematic-debugging` — ruled out a stale-extension
+  reload, page-specific narrowing (works on Wikipedia, fails on that Streamlit page),
+  then used the Browser pane to inspect the live page's DOM directly rather than guessing:
+  found the actual content lives inside a same-origin `<iframe>`, and `manifest.json`'s
+  content script never set `all_frames: true`. Fixed with one line; confirmed by Grayson.
+- Grayson raised two more wanted changes while testing: clear the native selection on read
+  (so GrayTTS's own highlight isn't hidden under it), and simplify the right-click menu to
+  one item (move "Save as audio clip" out of the auto-generated submenu). Ran
+  `brainstorming` for both — decomposed the selection-clear as a tiny sub-project (built
+  directly, no subagent pipeline needed) and the menu/relocation as a full spec → plan →
+  `subagent-driven-development` sub-project (3 tasks, worktree `relocate-save-clip`).
+- The relocation branch's final whole-branch review caught that the selection-clear fix
+  (already merged to `main` moments earlier) was *also* silently breaking read-along
+  highlight/overlay for every hotkey-triggered read, not just the new popup button —
+  `captureSelection()` was called twice per hotkey read and the first call's clear
+  destroyed what the second call needed. Root-cause fixed by splitting into a report-only
+  read and a capture-and-clear function, resolving both the reviewer's original finding and
+  the broader pre-existing regression in one change. Merged as v1.13.
+- Grayson confirmed all three (v1.11/v1.12/v1.13) Edge-verified in one pass ("I checked all
+  that. Let's call it confirmed."), and explicitly authorized pushing before that
+  confirmation had fully landed in the conversation — asked a clarifying question first
+  since it deviated from the hold-until-verified house rule, got explicit "yes push anyway,"
+  pushed, then he confirmed verification moments later. Updated `BACKLOG.md`'s Edge
+  verification status to close out items 7 and 9 and fixed an accidental duplicate item 7
+  entry introduced while editing.
+- Logged a project-memory note in `Util-GrayTTS-Desktop` (backlog item 3 there): Grayson
+  explicitly wants this session's improvements ported to desktop, not started/scoped yet —
+  flagged that its overlay is architecturally different (Win32 GUI, not a webpage) and has
+  no pause/resume concept today, and that its known cloud-voice fragmentation bug should be
+  fixed first.
+
 ### 2026-08-13 (part 12) — Built and merged save-as-audio-clip (backlog item 7)
 - Picked up from part 11: repo clean, backlog item 7 was the agreed next step.
 - Ran `brainstorming` to scope item 7. Grayson picked **system audio capture** over a
