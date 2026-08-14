@@ -42,20 +42,22 @@ the thread that was already there.
    Shadow-DOM box showing the current spoken word (RSVP/karaoke-style), independently
    toggleable alongside the existing highlight via two new popup checkboxes. Full spec:
    `docs/superpowers/specs/word-overlay.md`.
-7. **Save spoken output to an audio file** — scoped 2026-08-13 via `brainstorming`, ready
-   for planning. **Direction: system audio capture**, not a network TTS provider. A
+7. ~~**Save spoken output to an audio file**~~ — built 2026-08-13 (v1.11), Edge-verified
+   2026-08-14. **Direction: system audio capture**, not a network TTS provider — a
    feasibility spike confirmed `getDisplayMedia({audio:true})` with "Entire Screen + share
-   system audio" does capture Windows SAPI voice audio (what `chrome.tts` plays through).
-   Architecture: a new "Save as audio clip" context-menu item, using a `chrome.offscreen`
-   document (reason `DISPLAY_MEDIA`) to host the capture since `background.js`'s MV3
-   service worker has no document context of its own; auto-downloads a `.webm` file via
-   `chrome.downloads` when `chrome.tts` finishes speaking. Full design:
+   system audio" captures Windows SAPI voice audio (what `chrome.tts` plays through), hosted
+   in a `chrome.offscreen` document since `background.js`'s MV3 service worker has no
+   document context of its own. Auto-downloads a `.webm` file when `chrome.tts` finishes
+   speaking. Full design:
    [`docs/superpowers/specs/save-audio-clip.md`](docs/superpowers/specs/save-audio-clip.md).
    **Known hard constraint:** Chrome's screen-share picker can't be bypassed or
    remembered — every clip save requires clicking through it, even fully automated.
+   Originally a right-click context-menu item; relocated 2026-08-14 (v1.13) to a popup
+   button ("🎙 Save as audio clip") as part of simplifying the right-click menu back to a
+   single "Read with GrayTTS" item — see
+   [`docs/superpowers/specs/relocate-save-clip-to-popup.md`](docs/superpowers/specs/relocate-save-clip-to-popup.md).
    A second, optional network-based TTS provider (nicer voice) was explicitly discussed
    and **deferred** — not part of this scope, would need its own design pass later.
-   Next step: `writing-plans` to turn the spec into an implementation plan.
 8. ~~**Desktop TTS companion (read selected text outside the browser)**~~ — done
    2026-08-13, as a sibling project: `C:\Projects-local\Util-GrayTTS-Desktop`, merged to its
    own `main`. See that project's `HANDOFF.md` for full detail; next up there is expanding
@@ -71,21 +73,17 @@ the thread that was already there.
    `Util-GrayTTS-Desktop`), **not** a folder inside this repo — the extension loader
    scans every folder under the extension root.
 9. ~~**Clickable word overlay as a pause/play toggle**~~ — browser-extension side built
-   2026-08-14 (v1.12), pending Edge verification (see below). Clicking the overlay pauses/
-   resumes speech in sync with the popup's Pause/Resume button. The desktop-companion
-   equivalent (`Util-GrayTTS-Desktop`) is a separate, not-yet-scoped follow-on — that app
-   currently has no pause/resume concept at all, only a one-hotkey-interrupt model.
+   2026-08-14 (v1.12), Edge-verified 2026-08-14. Clicking the overlay pauses/resumes speech
+   in sync with the popup's Pause/Resume button. The desktop-companion equivalent
+   (`Util-GrayTTS-Desktop`) is a separate, not-yet-scoped follow-on — that app currently has
+   no pause/resume concept at all, only a one-hotkey-interrupt model.
 
 ## Edge verification status
 
-As of 2026-08-13, Grayson confirmed backlog items 1–6 all work in a real loaded Edge
-extension: word overlay (v1.8) appears on right-click reads and toggles independently
-of the highlight checkbox, the v1.9 pause/resume state-aware toggle works (including a
-new read overriding a paused utterance), and v1.10's popup polish (button reorder +
-attribution text) reads fine. Item 8 (desktop companion) is done and verified in its
-own sibling project. Item 7 (save-to-audio) is now scoped (spec at
-`docs/superpowers/specs/save-audio-clip.md`) and ready for `writing-plans`, not yet built
-or Edge-verified. Item 9 (clickable overlay pause/play) has its browser-extension side
-built (v1.12), pending Edge verification — same status noted in the item 9 entry above.
-Next additions should get appended here when a new idea comes up — this file has no
-reason to go stale otherwise.
+As of 2026-08-14, Grayson confirmed the full stack of pending features in a real loaded
+Edge extension: v1.11 save-as-audio-clip (all 8 checks), v1.12 clickable overlay
+pause/play (all 9 checks), and v1.13's right-click-menu simplification / popup save-clip
+button / selection-clear fix. All 16 previously-unpushed commits are now pushed to
+`origin/main` (`bc752c1`). Backlog items 1–9 are all built and Edge-verified; item 8
+(desktop companion) is verified in its own sibling project. Next additions should get
+appended here when a new idea comes up — this file has no reason to go stale otherwise.
