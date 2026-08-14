@@ -140,9 +140,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         });
         return true; // keep the message channel open for the async response above
     } else if (request.message === 'stop') {
-        chrome.tts.stop();
-        clearBadge();
-        setSpeechState('idle');
+        stopSpeech();
     } else if (request.message === 'capture_ready') {
         if (clipCaptureState !== 'awaiting_capture') { chrome.offscreen.closeDocument(); return; }
         clipCaptureState = 'capturing';
@@ -277,6 +275,15 @@ function setSpeechState(state) {
     chrome.storage.session.set({speechState: state});
 }
 
+// Shared by the popup's Stop button, Escape (content.js), and pressing the read hotkey
+// again while something is already speaking — all three cancel exactly the same way, so
+// there's one place that does it.
+function stopSpeech() {
+    chrome.tts.stop();
+    clearBadge();
+    setSpeechState('idle');
+}
+
 function sendClearHighlight(tabId) {
     chrome.tabs.sendMessage(tabId, {message: 'clear_highlight'}, () => {
         if (chrome.runtime.lastError) { /* tab navigated away mid-speech — ignore */ }
@@ -329,8 +336,19 @@ function getActiveTabSelectionText(callback) {
 // Listen for the hotkey command
 chrome.commands.onCommand.addListener(function(command) {
     if (command === 'read_selection' && extensionEnabled) {
-        getActiveTabSelectionText((text, tabId) => {
-            if (text) speak(text, tabId);
+        // chrome.tts.isSpeaking() reflects real chrome.tts state — true whenever an
+        // utterance is speaking OR paused-but-still-queued — so this can never drift out
+        // of sync the way tracking our own speechState here instead would. A second
+        // hotkey press always cancels, even if the selection changed since the first
+        // press; it never starts a new read on its own.
+        chrome.tts.isSpeaking((speaking) => {
+            if (speaking) {
+                stopSpeech();
+                return;
+            }
+            getActiveTabSelectionText((text, tabId) => {
+                if (text) speak(text, tabId);
+            });
         });
     }
 });
