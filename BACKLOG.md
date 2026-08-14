@@ -85,6 +85,7 @@ new read overriding a paused utterance), and v1.10's popup polish (button reorde
 attribution text) reads fine. Item 8 (desktop companion) is done and verified in its
 own sibling project. Item 7 (save-to-audio) is now scoped (spec at
 `docs/superpowers/specs/save-audio-clip.md`) and ready for `writing-plans`, not yet built
-or Edge-verified. Item 9 (clickable overlay pause/play) is a new, unscoped idea. Next
-additions should get appended here when a new idea comes up — this file has no reason to
-go stale otherwise.
+or Edge-verified. Item 9 (clickable overlay pause/play) has its browser-extension side
+built (v1.12), pending Edge verification — same status noted in the item 9 entry above.
+Next additions should get appended here when a new idea comes up — this file has no
+reason to go stale otherwise.

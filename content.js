@@ -106,7 +106,8 @@ function ensureOverlay() {
               pointer-events: auto; cursor: pointer; }
     `;
     overlayText = document.createElement('div');
-    overlayText.addEventListener('click', () => {
+    overlayText.addEventListener('click', (event) => {
+        event.stopPropagation();
         chrome.runtime.sendMessage({message: overlayPaused ? 'resume' : 'pause'});
     });
     shadow.appendChild(style);

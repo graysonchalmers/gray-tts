@@ -138,6 +138,14 @@ paused/resumed:
      overlay is not stuck red from the prior read.
    - Confirm Preview is unaffected (no overlay exists, nothing to click).
    - Confirm `showOverlay` off still means nothing is clickable (overlay isn't rendered).
+   - Re-read while speaking, same tab: start a right-click/hotkey read, then before it
+     finishes, select different text and trigger another right-click/hotkey read in the
+     SAME tab (interrupting the first) → click the overlay during the second read →
+     confirm it turns red and speech genuinely pauses.
+   - Overlay doesn't block page UI: on a page with important UI near the bottom-center of
+     the viewport (e.g. a chat input box, like Gemini's prompt field), start a read →
+     confirm the overlay doesn't make that underlying UI unreachable for the duration of
+     the read (sanity check on an accepted tradeoff; doesn't block merge if it reads badly).
 
 ## Version bump
 

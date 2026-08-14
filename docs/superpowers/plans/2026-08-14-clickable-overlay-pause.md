@@ -462,7 +462,7 @@ git commit -m "Bump to v1.12: clickable word-overlay pause/play"
 
 This step needs a human at a real keyboard — an agentic worker cannot hear real TTS audio
 or confirm a color/cursor change actually renders. Reload the unpacked extension in Edge
-(`edge://extensions` → reload), then run through all 7 checks from
+(`edge://extensions` → reload), then run through all 9 checks from
 `docs/superpowers/specs/clickable-overlay-pause.md`'s testing plan:
 
 1. **Golden path** — right-click read a selection with the overlay on → hover shows a
@@ -482,10 +482,18 @@ or confirm a color/cursor change actually renders. Reload the unpacked extension
 7. **`showOverlay` off** — uncheck "Show word overlay" in the popup, do a right-click read →
    confirm nothing renders and there's nothing to click (the highlight, if on, still works
    independently).
+8. **Re-read while speaking, same tab** — start a right-click/hotkey read, then before it
+   finishes, select different text and trigger another right-click/hotkey read in the SAME
+   tab (interrupting the first) → click the overlay during the second read → confirm it
+   turns red and speech genuinely pauses.
+9. **Overlay doesn't block page UI** — on a page with important UI near the bottom-center of
+   the viewport (e.g. a chat input box, like Gemini's prompt field), start a read → confirm
+   the overlay doesn't make that underlying UI unreachable for the duration of the read
+   (sanity check on an accepted tradeoff; doesn't block merge if it reads badly).
 
 Report back pass/fail per check. Any failure means back to Task 1 or 2 to fix, then
 re-verify — don't mark backlog item 9 fully done (drop the "pending Edge verification" note
-in `BACKLOG.md`) until all 7 pass.
+in `BACKLOG.md`) until all 9 pass.
 
 ---
 
@@ -496,7 +504,7 @@ in `BACKLOG.md`) until all 7 pass.
   `speech_paused`/`speech_resumed` relay) → Task 1 (relay) + Task 2 (consume). Rendering
   changes (`pointer-events`, `cursor`, click listener, `setOverlayPausedStyle`) → Task 2.
   Out-of-scope items (in-page highlight unchanged, no animation, desktop deferred) are
-  correctly not represented as tasks here. Testing plan → Task 3 Step 5, all 7 checks.
+  correctly not represented as tasks here. Testing plan → Task 3 Step 5, all 9 checks.
 - **Type/interface consistency:** `speech_paused`/`speech_resumed` are the exact message
   names sent in Task 1 (`background.js`) and matched in Task 2's `content.js` listener.
   `currentSpeakingTabId` is set/read only within `background.js` (Task 1) — `content.js`
