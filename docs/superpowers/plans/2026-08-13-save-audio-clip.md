@@ -489,7 +489,19 @@ let clipCaptureTabId = null;
 const OFFSCREEN_DOCUMENT_PATH = 'offscreen.html';
 
 async function ensureOffscreenDocument() {
-    if (await chrome.offscreen.hasDocument()) return;
+    // startClipCapture()'s own guard only calls this when clipCaptureState is 'idle'. Given
+    // that background.js closes the offscreen document in every terminal branch (Step 5)
+    // before ever returning to 'idle', an existing document at this point can only be a
+    // stale leftover — most likely the MV3 service worker was torn down and respawned
+    // (resetting this file's in-memory clipCaptureState back to 'idle') while the previous
+    // capture's getDisplayMedia picker was still open, orphaning that document. There's no
+    // way to tell a stale document apart from a legitimately-still-open one here, so always
+    // close and recreate rather than reusing it — self-heals a stuck capture on the very
+    // next attempt instead of leaving the extension unable to ever open a new one (Chrome
+    // allows only one offscreen document at a time).
+    if (await chrome.offscreen.hasDocument()) {
+        await chrome.offscreen.closeDocument();
+    }
     await chrome.offscreen.createDocument({
         url: OFFSCREEN_DOCUMENT_PATH,
         reasons: ['DISPLAY_MEDIA'],
@@ -516,6 +528,19 @@ function resetClipCaptureState() {
     clipCaptureTabId = null;
 }
 ```
+
+**Accepted residual risk (not fixed, by design):** `clipCaptureState`/`clipCaptureText`/
+`clipCaptureTabId` are plain in-memory variables, not persisted to
+`chrome.storage.session` the way `speechState` is. If the MV3 service worker respawns
+*during* the one specific capture attempt whose `getDisplayMedia` picker is still open
+(possible if the user takes >~30s idle to respond to it), that one attempt silently
+produces no clip and no error badge — `ensureOffscreenDocument()`'s self-healing above
+means the *next* "Save as audio clip" click still works normally, so this doesn't leave
+the extension stuck, but the interrupted attempt itself is a real (rare, narrow-window)
+exception to "never silently fail." Full correctness would mean persisting and
+rehydrating this state the way `speechState` is, which is a larger change than this
+feature's scope justifies right now — flagged here rather than silently accepted with no
+record.
 
 - [ ] **Step 5: Handle the offscreen document's reply messages**
 
@@ -744,3 +769,13 @@ re-verify — don't mark backlog item 7 done in `BACKLOG.md` until all 7 pass.
   flagged: a `blob:`-URL-revoked-before-download-finishes risk (replaced with a `data:`
   URL sent whole over the message channel) and a close-before-message-delivered race
   (fixed by having `background.js`, not `offscreen.js`, decide when to close).
+- **Second correction (made mid-implementation, after Task 3's first pass):** Task 3's
+  implementer flagged that `clipCaptureState` is plain in-memory state that a MV3
+  service-worker respawn (a real, previously-encountered failure mode in this codebase —
+  see `speechState`'s use of `chrome.storage.session` for the same reason) could reset
+  mid-capture while `getDisplayMedia`'s picker is still open, orphaning the offscreen
+  document and permanently blocking future captures (Chrome allows only one at a time).
+  Fixed `ensureOffscreenDocument()` to close-then-recreate rather than reuse an existing
+  document, which self-heals this on the very next attempt. A narrower residual risk (the
+  one interrupted attempt itself silently produces nothing) remains and is documented as
+  an accepted, scope-appropriate tradeoff rather than fixed with full state persistence.
