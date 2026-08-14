@@ -10,18 +10,36 @@ const highlightSupported = typeof CSS !== 'undefined' && !!CSS.highlights && typ
 // speech starts so later highlight_progress messages have something to map charIndex onto.
 let activeRange = null;
 
+// Report-only: returns the currently selected text without any side effects. Used to fetch
+// text for a read/clip trigger before we know whether the read will actually start (e.g. a
+// "Save as audio clip" trigger whose screen-share picker might still be cancelled) — must
+// NOT clear the selection or touch activeRange, since capture_selection_range (below) is the
+// one guaranteed point that does that, right before speech actually begins.
 function captureSelection() {
     const sel = window.getSelection();
     if (sel && sel.rangeCount > 0 && !sel.isCollapsed) {
+        return sel.toString();
+    }
+    return '';
+}
+
+// The authoritative point that clones the current selection into activeRange AND clears the
+// native selection. Called via the capture_selection_range message, which speak() sends
+// unconditionally whenever it has a tabId — covering right-click reads, hotkey reads, and the
+// internal speak() call inside a clip capture once its picker has already succeeded. Clearing
+// here (not in captureSelection() above) means a trigger that never reaches this point (e.g. a
+// cancelled clip-capture picker) leaves the user's selection completely untouched for an easy
+// retry, and a hotkey read's earlier get_selection call no longer destroys what this needs.
+function captureAndClearSelectionRange() {
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount > 0 && !sel.isCollapsed) {
         activeRange = sel.getRangeAt(0).cloneRange();
-        const text = sel.toString();
         // Clear the native selection now that we've cloned what we need — otherwise it sits
         // on top of our own read-along highlight/overlay until the user clicks elsewhere.
         sel.removeAllRanges();
-        return text;
+    } else {
+        activeRange = null;
     }
-    activeRange = null;
-    return '';
 }
 
 // chrome.tts's word-event charIndex/length are positions in the exact string passed to
@@ -157,7 +175,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.text === 'get_selection') {
         sendResponse({selection: captureSelection()});
     } else if (request.message === 'capture_selection_range') {
-        captureSelection();
+        captureAndClearSelectionRange();
     } else if (request.message === 'highlight_progress') {
         if (request.showHighlight) highlightProgress(request.charIndex, request.length);
         if (request.showOverlay) renderOverlay(request.charIndex, request.length);

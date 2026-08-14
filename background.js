@@ -64,7 +64,7 @@ async function startClipCapture(text, tabId) {
         chrome.runtime.sendMessage({message: 'start_capture'});
     } catch (err) {
         // ensureOffscreenDocument()/createDocument() rejecting is rare, but the
-        // context-menu click handler below calls startClipCapture() without awaiting or
+        // popup's save-clip message handler calls startClipCapture() without awaiting or
         // catching it — an uncaught rejection here would wedge clipCaptureState at
         // 'awaiting_capture' forever (every later save-clip click would hit the guard
         // above with no way out, since this failure never reaches the 'idle' state the
