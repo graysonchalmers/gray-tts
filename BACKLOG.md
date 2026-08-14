@@ -70,12 +70,11 @@ the thread that was already there.
    version of the idea. Would live as a sibling `Util-*` project (e.g.
    `Util-GrayTTS-Desktop`), **not** a folder inside this repo — the extension loader
    scans every folder under the extension root.
-9. **Clickable word overlay as a pause/play toggle** — raised 2026-08-13 during the item 7
-   brainstorm, not scoped. Idea: clicking the word-overlay box (built in v1.8) would freeze
-   the current word, highlight it red, and pause speech; clicking again resumes. Would
-   need its own design pass — e.g. how it interacts with the existing Pause/Resume popup
-   toggle from v1.9, and whether the overlay needs to become a real clickable element
-   (currently `pointer-events: none` by design, see the word-overlay spec).
+9. ~~**Clickable word overlay as a pause/play toggle**~~ — browser-extension side built
+   2026-08-14 (v1.12), pending Edge verification (see below). Clicking the overlay pauses/
+   resumes speech in sync with the popup's Pause/Resume button. The desktop-companion
+   equivalent (`Util-GrayTTS-Desktop`) is a separate, not-yet-scoped follow-on — that app
+   currently has no pause/resume concept at all, only a one-hotkey-interrupt model.
 
 ## Edge verification status
 
