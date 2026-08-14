@@ -277,11 +277,17 @@ function setSpeechState(state) {
 
 // Shared by the popup's Stop button, Escape (content.js), and pressing the read hotkey
 // again while something is already speaking — all three cancel exactly the same way, so
-// there's one place that does it.
+// there's one place that does it. Only clears the error badge if something was actually
+// speaking/paused — otherwise a stray Escape/Stop press with nothing active would wipe an
+// error message (e.g. from showErrorBadge()) the user hasn't read yet. Checks
+// isSpeaking() first and only THEN calls stop(), rather than firing both in parallel, so
+// the speaking/not-speaking read reflects state from before stop() runs.
 function stopSpeech() {
-    chrome.tts.stop();
-    clearBadge();
-    setSpeechState('idle');
+    chrome.tts.isSpeaking((speaking) => {
+        if (speaking) clearBadge();
+        chrome.tts.stop();
+        setSpeechState('idle');
+    });
 }
 
 function sendClearHighlight(tabId) {

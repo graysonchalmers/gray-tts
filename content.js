@@ -194,13 +194,17 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 // Escape is a general "stop talking" panic key — works even before any overlay has
 // appeared on this tab, and regardless of which tab is the one actually speaking (this
 // just sends the same 'stop' message the popup's Stop button does, and background.js's
-// single chrome.tts.stop() call handles the rest regardless of source tab). Never calls
-// preventDefault()/stopPropagation(), so it never interferes with whatever the host page
-// itself does with Escape (closing its own modal, etc.) — this just piggybacks alongside
-// it. Sending 'stop' when nothing is speaking is a harmless no-op, so this doesn't need to
-// check speech state first.
+// single chrome.tts.stop() call handles the rest regardless of source tab). Registered on
+// the capture phase (the trailing `true`) so a page's own keydown handler further down the
+// tree calling stopPropagation() on Escape — common in modal/dialog libraries and
+// framework-heavy editors — can't swallow it before it reaches here. Still never calls
+// preventDefault()/stopPropagation() itself, so it never interferes with whatever the host
+// page does with Escape once its own handlers run — this only ever piggybacks alongside
+// them. Sending 'stop' when nothing is speaking is a harmless no-op, so this doesn't need
+// to check speech state first. Ignores event.repeat so holding Escape down doesn't spam
+// the message.
 document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') {
+    if (event.key === 'Escape' && !event.repeat) {
         chrome.runtime.sendMessage({message: 'stop'});
     }
-});
+}, true);
