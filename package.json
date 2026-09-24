@@ -2,6 +2,7 @@
   "name": "graytts",
   "private": true,
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "stamp": "node scripts/build-stamp.mjs"
   }
 }

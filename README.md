@@ -10,6 +10,28 @@ instead — visible in `chrome://extensions` and in the popup footer, which read
 the manifest so it can never go stale on its own. Bump both together on every meaningful
 change: `version` gets a normal bump, `version_name` becomes `"<version> (<local date> <local time>)"`.
 
+## Build stamp
+
+Separate from the `version`/`version_name` pair above, this repo also carries a
+commit-derived build stamp per `_agent-commons\reference\build-stamp-standard.md`
+(`🦑 EMBER · 4a1c2f · 2026-09-06` style — emoji + BIP-39 codeword + short SHA + commit date,
+optionally prefixed with the manifest version). There is no bundler/build step here, so
+nothing regenerates it automatically. Run it by hand after committing a change:
+
+```
+npm run stamp
+```
+
+This writes/overwrites the committed `build-stamp.json` at the repo root from the current
+`git rev-parse HEAD` (and the `manifest.json` `version` field, if set). Commit
+`build-stamp.json` as its own follow-up commit — it necessarily lags one commit behind
+whatever change it's stamping, since it can't know its own SHA in advance. The popup reads
+it at open time (`fetch(chrome.runtime.getURL('build-stamp.json'))`) and shows it quietly as
+the footer's `title` attribute (hover to see it) — a fresh checkout before the first
+`npm run stamp` run just has no tooltip, not an error. `npm test` includes a smoke check
+that `build-stamp.json`, if present, is internally consistent (its `stamp` matches a fresh
+derivation of its own recorded `sha`/`date`/`version`).
+
 ## Change Notes
 - 2026-08-14: **Hotkey moved to `Ctrl+Alt+L`** (suggested default only — existing
   installs keep whatever's set in `chrome://extensions/shortcuts` until re-bound by hand)
