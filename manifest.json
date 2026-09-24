@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "GrayTTS",
-  "version": "1.14",
-  "version_name": "1.14 (2026-08-14 14:44)",
+  "version": "1.15",
+  "version_name": "1.15 (2026-09-23 00:00)",
   "permissions": [
     "tts",
     "contextMenus",
@@ -16,15 +16,15 @@
   "action": {
     "default_popup": "popup.html",
     "default_icon": {
-      "16": "images/icon16.png",
-      "48": "images/icon48.png",
-      "128": "images/icon128.png"
+      "16": "images/icon-16.png",
+      "48": "images/icon-48.png",
+      "128": "images/icon-128.png"
     }
   },
   "icons": {
-    "16": "images/icon16.png",
-    "48": "images/icon48.png",
-    "128": "images/icon128.png"
+    "16": "images/icon-16.png",
+    "48": "images/icon-48.png",
+    "128": "images/icon-128.png"
   },
   "content_scripts": [
     {
