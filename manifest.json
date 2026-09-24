@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "GrayTTS",
   "version": "1.15",
-  "version_name": "1.15 (2026-09-23 00:00)",
+  "version_name": "1.15 (2026-09-24 00:27)",
   "permissions": [
     "tts",
     "contextMenus",

@@ -2,7 +2,7 @@
 Simple Chrome TTS extension
 
 ## Version
-1.14 (2026-08-14 14:44)
+1.15 (2026-09-24 00:27)
 
 Chrome's manifest `version` field only accepts dot-separated integers, so it can't hold a
 timestamp. The human-readable build stamp lives in `manifest.json`'s `version_name` field
